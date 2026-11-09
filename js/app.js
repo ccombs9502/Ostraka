@@ -42,6 +42,7 @@
     bolt: '<path d="M13.5 2 4.5 13.5h6L9.5 22l9-11.5h-6z" fill="currentColor"/>',
     pin: '<path d="M9 3h6l-1 6 4 4H6l4-4z"/><path d="M12 13v8"/>',
     x: '<path d="M6 6l12 12M18 6 6 18"/>',
+    lang: '<path d="M3 5h9M7.5 3v2M5 5c.9 3.2 3.2 5.8 6.5 7M10 5c-.9 3.2-3.2 5.8-6.5 7"/><path d="m12.5 21 4.5-10 4.5 10M14 17.5h6"/>',
   };
   const icon = (n) => svg(ICON[n]);
   const pinIcon = (on) => { const s = icon("pin"); if (on) s.setAttribute("fill", "currentColor"); return s; };
@@ -65,10 +66,13 @@
 
   function render() {
     st.keys = null;
-    app.replaceChildren(st.session ? renderSession() : renderShell());
+    const ot = window.OT && window.OT.session;
+    if (ot) st.keys = window.OT.keys;
+    app.replaceChildren(ot ? window.OT.renderSession() : st.session ? renderSession() : renderShell());
     if (st.modal) app.append(h("div", { class: "overlay", onclick: (e) => { if (e.target.classList.contains("overlay") && st.modalDismissable) closeModal(); } }, st.modal()));
     const auto = app.querySelector("[data-autofocus]");
-    if (auto) setTimeout(() => auto.focus(), 0);
+    const touchOnly = window.OT && window.OT.session && matchMedia("(hover: none)").matches;
+    if (auto && !touchOnly) setTimeout(() => auto.focus({ preventScroll: !!(window.OT && window.OT.session) }), 0);
   }
   function openModal(fn, dismissable = true) { st.modal = fn; st.modalId = (st.modalId || 0) + 1; st.modalDismissable = dismissable; render(); }
   const sheetClass = () => "sheet" + ap("modal", st.modalId);
@@ -81,13 +85,13 @@
   });
 
   // ---------- Shell ----------
-  const SECTIONS = [["home", "Home", "home"], ["vocab", "Vocabulary", "book"], ["paradigms", "Paradigms", "grid"], ["add", "Add Words", "plus"], ["settings", "Settings", "gear"]];
+  const SECTIONS = [["home", "Home", "home"], ["vocab", "Vocabulary", "book"], ["translate", "Translate", "lang"], ["paradigms", "Paradigms", "grid"], ["add", "Add Words", "plus"], ["settings", "Settings", "gear"]];
   function go(section, practice = false) { st.section = section; st.paradigmPractice = practice; st.pstack = []; render(); }
 
   function renderShell() {
     const navBtn = ([id, title, ic]) =>
       h("button", { class: "nav" + (st.section === id ? " on" : ""), onclick: () => go(id) }, icon(ic), title);
-    const views = { home: viewHome, vocab: viewVocab, paradigms: viewParadigms, add: viewAdd, settings: viewSettings };
+    const views = { home: viewHome, vocab: viewVocab, translate: () => window.OT.view(), paradigms: viewParadigms, add: viewAdd, settings: viewSettings };
     const page = views[st.section]();
     if (!O.data.settings.hasSeenWelcome && !st.modal) setTimeout(() => openModal(welcomeSheet, false), 0);
     return h("div", { class: "shell" },
@@ -120,7 +124,8 @@
           choice("Study Session", "target", "var(--accent)", "Work through every word in a group until you've mastered it. Missed words come back more often.", "Flashcards · Type · Multiple choice · English → Greek · Draw · Board", "Start studying", true, () => openSetup("study"), empty),
           choice("Daily Review", "cal", "var(--olive)", "A few minutes a day. Words you know rest for days, then come back right before you'd forget them.", due + fresh ? `${due + fresh} words waiting today` : "All caught up today", "Review today", false, () => openSetup("daily"), empty),
           choice("Cram", "bolt", "var(--gold)", "Race through a group as fast as you can. Great right before a quiz. Doesn't change your schedule.", "Flashcards · Type", "Start cram", false, () => openSetup("cram"), empty),
-          choice("Paradigms", "grid", "var(--brownish)", "Fill in charts, drill single forms, or identify forms for the article, nouns, pronouns and verbs.", "Chart · Drill · Identify", "Practice paradigms", false, () => go("paradigms", true))),
+          choice("Paradigms", "grid", "var(--brownish)", "Fill in charts, drill single forms, or identify forms for the article, nouns, pronouns and verbs.", "Chart · Drill · Identify", "Practice paradigms", false, () => go("paradigms", true)),
+          choice("Translate", "lang", "#5b6f8a", "Translate sentences the way you do by hand: parse each word, build the skeleton, then write the whole sentence.", "Greek → English · English → Greek · Library", "Translate sentences", false, () => go("translate"))),
         installTip(),
         O.loadError ? h("div", { style: "color:var(--bad)" }, O.loadError) : null,
         h("div", { class: "muted small" }, empty ? "You don't have any words yet. Go to Add Words to import your vocabulary." : "Add more words anytime under Add Words.")),
@@ -968,8 +973,9 @@
           h("div", { class: "row" }, "Groups", h("span", { class: "spacer" }), h("span", { class: "muted" }, O.data.groups.length)),
           h("div", { class: "row" }, "Reviewed at least once", h("span", { class: "spacer" }), h("span", { class: "muted" }, Object.keys(O.data.progress).length))),
         h("div", { class: "card pad stack" }, h("b", null, "About"),
-          h("div", { class: "row" }, "Version", h("span", { class: "spacer" }), h("span", { class: "muted" }, "Ostraka Web 1")),
+          h("div", { class: "row" }, "Version", h("span", { class: "spacer" }), h("span", { class: "muted" }, "Ostraka Web 5")),
           h("div", { class: "muted small" }, "Your words and progress are saved in this browser on this computer."),
+          h("div", { class: "muted small" }, "Translate uses the SBL Greek New Testament (SBLGNT, Society of Biblical Literature and Logos Bible Software) with MorphGNT parsing (CC BY-SA), glosses from the Dodson Greek Lexicon (public domain), and the Montserrat font (SIL Open Font License)."),
           h("button", { class: "btn", onclick: () => { O.set("hasSeenWelcome", false); render(); } }, "Show the welcome guide again")),
         h("div", { class: "card pad stack" },
           h("button", { class: "btn red", onclick: () => { if (confirm("Reset all progress? Your words, chapters and groups stay.")) { O.resetProgress(); render(); } } }, "Reset all progress"),
@@ -977,5 +983,7 @@
     };
   }
 
+  window.OUI = { h, icon, svg, render, openModal, closeModal, sheetClass, ap, st, go, greekInput };
+  window.OT.init();
   render();
 })();
