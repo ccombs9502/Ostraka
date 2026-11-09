@@ -68,8 +68,21 @@
     st.keys = null;
     const ot = window.OT && window.OT.session;
     if (ot) st.keys = window.OT.keys;
+    // Keep the scroll position when the same screen redraws after a tap; only
+    // a new screen (another page, sentence or step) starts back at the top.
+    const screen = ot ? "t|" + ot.ids[ot.i] + "|" + (ot.phase === "parsed" ? "parse" : ot.phase) : st.session ? "s" : "shell|" + st.section;
+    const SCROLLERS = [".content", ".s-body", ".sheet .body", ".t-prev"];
+    const saved = screen === render.screen ? SCROLLERS.map((q) => { const el = app.querySelector(q); return el ? el.scrollTop : 0; }) : null;
+    const winY = window.scrollY;
+    render.screen = screen;
+    app.style.minHeight = app.offsetHeight + "px";
     app.replaceChildren(ot ? window.OT.renderSession() : st.session ? renderSession() : renderShell());
     if (st.modal) app.append(h("div", { class: "overlay", onclick: (e) => { if (e.target.classList.contains("overlay") && st.modalDismissable) closeModal(); } }, st.modal()));
+    if (saved) {
+      SCROLLERS.forEach((q, i) => { const el = app.querySelector(q); if (el && saved[i]) el.scrollTop = saved[i]; });
+      if (winY) window.scrollTo(0, winY);
+    }
+    app.style.minHeight = "";
     const auto = app.querySelector("[data-autofocus]");
     const touchOnly = window.OT && window.OT.session && matchMedia("(hover: none)").matches;
     if (auto && !touchOnly) setTimeout(() => auto.focus({ preventScroll: !!(window.OT && window.OT.session) }), 0);
@@ -973,7 +986,7 @@
           h("div", { class: "row" }, "Groups", h("span", { class: "spacer" }), h("span", { class: "muted" }, O.data.groups.length)),
           h("div", { class: "row" }, "Reviewed at least once", h("span", { class: "spacer" }), h("span", { class: "muted" }, Object.keys(O.data.progress).length))),
         h("div", { class: "card pad stack" }, h("b", null, "About"),
-          h("div", { class: "row" }, "Version", h("span", { class: "spacer" }), h("span", { class: "muted" }, "Ostraka Web 5")),
+          h("div", { class: "row" }, "Version", h("span", { class: "spacer" }), h("span", { class: "muted" }, "Ostraka Web 7")),
           h("div", { class: "muted small" }, "Your words and progress are saved in this browser on this computer."),
           h("div", { class: "muted small" }, "Translate uses the SBL Greek New Testament (SBLGNT, Society of Biblical Literature and Logos Bible Software) with MorphGNT parsing (CC BY-SA), glosses from the Dodson Greek Lexicon (public domain), and the Montserrat font (SIL Open Font License)."),
           h("button", { class: "btn", onclick: () => { O.set("hasSeenWelcome", false); render(); } }, "Show the welcome guide again")),

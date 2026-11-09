@@ -582,6 +582,22 @@
           results[i] = { ok: false, message: "Which word does this line belong to? Try indenting it under the verb." };
       });
     }
+    // Order: an indented line has to sit under the line it belongs to.
+    rows.forEach((r, i) => {
+      if (!results[i].ok) return;
+      const prev = rows[i - 1];
+      if (r.level > 0 && (!prev || r.level > prev.level + 1))
+        results[i] = { ok: false, message: prev ? "This line is pushed in too far. It should be only one step further right than the line it belongs to." : "An indented line needs a line above it to hang from. Move it below the word it describes." };
+      else if (r.level > 0) {
+        // Its parent is the nearest line above with a smaller indent.
+        let p = i - 1; while (p >= 0 && rows[p].level >= r.level) p--;
+        const parent = p >= 0 ? rows[p] : null;
+        if (parent && ["Subject", "Direct object", "Indirect object"].includes(r.role) && parent.role !== "Verb" && parent.role !== "Conjunction")
+          results[i] = { ok: false, message: `A ${r.role.toLowerCase()} belongs to the verb. Move this line so it sits under the verb line.` };
+      }
+    });
+    if (verbRows.length && rows.length && rows[0].role !== "Verb" && rows[0].role !== "Conjunction" && results[0].ok)
+      results[0] = { ok: false, message: "Start the skeleton with the verb at the top." };
     return { results, ok: results.every((x) => x.ok) };
   };
 

@@ -11,7 +11,7 @@
   T.init = () => {
     ({ h, icon, render, openModal, closeModal, sheetClass, ap, greekInput } = window.OUI);
     const d = O.data;
-    for (const [k, v] of Object.entries({ sentences: [], sentenceGroups: [], tResults: {}, tNotes: {}, sentencePresets: [], pinnedSentences: [], pinnedSentenceGroups: [], tDays: [] }))
+    for (const [k, v] of Object.entries({ sentences: [], sentenceGroups: [], tResults: {}, tNotes: {}, tWork: {}, sentencePresets: [], pinnedSentences: [], pinnedSentenceGroups: [], tDays: [] }))
       if (d[k] == null) d[k] = v;
     const defaults = { tLabelsFull: true, tLinkArticles: true, tNotesFull: false, tShowStructure: false, tDir: "g2e" };
     for (const [k, v] of Object.entries(defaults)) if (d.settings[k] == null) d.settings[k] = v;
@@ -201,7 +201,7 @@
         h("div", { class: "t-li-main" },
           h("div", { class: "gk t-li-gk" }, pinned ? "📌 " : "", E.sentenceText(s, true)),
           eng ? h("div", { class: "muted small", style: "font-size:14px" }, eng) : null),
-        helpTag(r), r2 ? h("span", { class: "t-tag" + (usedHelp(r2) ? " red" : " ok") }, "Eng → Gk " + (usedHelp(r2) ? "•" : "✓")) : null,
+        helpTag(r), (O.data.tWork[s.id + "|g2e"] || O.data.tWork[s.id + "|e2g"]) && !L.select ? h("button", { class: "btn link", onclick: (e) => { e.stopPropagation(); showWork(workKeys([s.id])); } }, "📄 Work") : null, r2 ? h("span", { class: "t-tag" + (usedHelp(r2) ? " red" : " ok") }, "Eng → Gk " + (usedHelp(r2) ? "•" : "✓")) : null,
         h("div", { class: "muted small t-li-meta" }, [s.ref, s.chapter != null ? "Ch. " + s.chapter : "", fmtDate(r && r.at)].filter(Boolean).join(" · ")),
         L.select ? null : h("button", { class: "icon-btn" + (pinned ? " on" : ""), title: pinned ? "Unpin" : "Pin", onclick: (e) => { e.stopPropagation(); togglePinSentence(s.id); } }, (() => { const p = icon("pin"); if (pinned) p.setAttribute("fill", "currentColor"); return p; })()),
         L.select ? null : h("button", { class: "btn" + (usedHelp(r) ? " t-retry" : ""), onclick: (e) => { e.stopPropagation(); T.start([s.id], S().tDir, s.ref || "Sentence"); } }, usedHelp(r) ? "↺ Try again" : r ? "Again" : "Translate"));
@@ -231,6 +231,7 @@
           h("option", { value: "" }, "+ Add to group…"), d.sentenceGroups.map((g) => h("option", { value: g.id }, g.name)), h("option", { value: "new" }, "New group…")),
         h("button", { class: "btn", disabled: !selCount || null, onclick: () => { L.sel.forEach((id) => { if (!d.pinnedSentences.includes(id)) d.pinnedSentences.push(id); }); O.save(); render(); } }, "📌 Pin"),
         h("button", { class: "btn", disabled: !selCount || null, onclick: () => T.start(L.sel.slice(), S().tDir, "Selected sentences") }, "Practice these"),
+        h("button", { class: "btn", disabled: !selCount || null, onclick: () => { const k = workKeys(L.sel); if (k.length) showWork(k); else alert("None of these sentences have been translated yet."); } }, "📄 Show work"),
         h("button", { class: "btn red", disabled: !selCount || null, onclick: () => { if (confirm(`Delete ${selCount} sentence${selCount === 1 ? "" : "s"}?`)) { deleteSentences(L.sel); L.sel = []; render(); } } }, "Delete")) : null,
     ];
   }
@@ -251,6 +252,7 @@
       h("button", { class: "btn", onclick: () => { closeModal(); groupEditor(g); } }, "Edit group"),
       h("button", { class: "btn", onclick: () => { const l = d.pinnedSentenceGroups, i = l.indexOf(gid); if (i >= 0) l.splice(i, 1); else l.push(gid); O.save(); closeModal(); } }, d.pinnedSentenceGroups.includes(gid) ? "Unpin group" : "📌 Pin group"),
       h("button", { class: "btn", onclick: () => { closeModal(); T.start(T.scopeIds("g:" + gid), S().tDir, g.name); } }, "Practice this group"),
+      h("button", { class: "btn", onclick: () => { const k = workKeys(T.scopeIds("g:" + gid)); if (k.length) showWork(k, null, g.name); else alert("No sentences in this group have been translated yet."); } }, "📄 Show work for this group"),
       h("button", { class: "btn red", onclick: () => { if (confirm(`Delete the group "${g.name}"? The sentences stay in your Library.`)) { d.sentenceGroups = d.sentenceGroups.filter((x) => x.id !== gid); if (tr.lib.group === "g:" + gid) tr.lib.group = "all"; O.save(); closeModal(); } } }, "Delete group"),
       h("button", { class: "btn link", onclick: closeModal }, "Close"))));
   }
@@ -450,6 +452,8 @@
     const ss = T.session, n = ss.cur, u = ss.units[n], a = ss.ans[n];
     if (n < 0 || !u) return;
     const forms = unitForms(u), noKey = !forms.length;
+    if (!a.open) a.open = {};
+    if (!a.closed) a.closed = {};
     a.tries++;
     let allOk = true;
     const mark = (k, ok) => { a.ok[k] = !!ok; if (!ok) allOk = false; };
@@ -473,9 +477,21 @@
         }
         mark("parse", all);
       }
-      if (step === "ctx") mark("ctx", !!(a.f.ctx || "").trim());
+      if (step === "ctx") {
+        const t = (a.f.ctx || "").trim();
+        const problem = t ? ctxProblem(u, forms, t) : null;
+        // A warning, not a hard stop: some verbs take a genitive object, so
+        // pressing Check again with the same answer keeps it.
+        const keep = problem && a.ctxKeep === t;
+        mark("ctx", !!t && (!problem || keep));
+        a.ctxMsg = problem && !keep ? problem : null;
+        a.ctxKeep = problem ? t : null;
+      }
       if (step === "form") mark("form", !!a.f.form && E.fw(a.f.form) === E.fw(u.greek));
     }
+    ["lex", "mean", "ctx", "form"].forEach((k) => { if (a.ok[k]) { a.closed[k] = true; delete a.open[k]; } });
+    Object.keys(a.ok).forEach((k) => { if (k.startsWith("p:") && a.ok[k]) delete a.open[k]; });
+    if (a.ok.kind) delete a.open.kind;
     if (!allOk) { a.missed = true; render(); return; }
     a.done = true; a.skip = false; ss.hint = null;
     advance();
@@ -492,6 +508,18 @@
   }
 
   // ---------- Hints ----------
+  // Does the English fit the case? Right now: a genitive usually shows up as
+  // "of …", "…'s", "from …" or a possessive like "my" or "his".
+  function ctxProblem(u, forms, text) {
+    const f = forms[0];
+    if (!f || !f.parse || f.parse[4] !== "G") return null;
+    if (!["Noun", "Pronoun", "Adjective", "Article"].includes(E.posName(f.pos))) return null;
+    const ss = T.session, prev = ss.units[ss.units.indexOf(u) - 1];
+    if (prev) { const pf = unitForms(prev)[0]; if (pf && E.posName(pf.pos) === "Preposition") return null; }
+    const t = " " + text.toLowerCase().replace(/[’‘]/g, "'") + " ";
+    if (/\b(of|from|than|about|by|whose|my|your|his|her|its|our|their|mine|yours)\b|'s\b|s'/.test(t)) return null;
+    return `${u.greek} is genitive, so it usually reads “of …” (or “…'s”, or “my/his/their …”). If your English fits here anyway, press Check again to keep it.`;
+  }
   function currentStep(u, a) { return stepsFor(u).find((st) => !a.ok[st]) || "ctx"; }
   function hintText(u, a, step, tier) {
     const forms = unitForms(u), f = forms[0];
@@ -562,6 +590,27 @@
       h("div", { class: "muted small" }, "Hints you use are noted in your Library."));
   }
 
+  // ---------- View settings (⚙) ----------
+  function settingsPop() {
+    const ss = T.session;
+    if (!ss.settingsOpen) return null;
+    const lines = makeLines(ss.units);
+    const lineDone = (ln) => ln.every((n) => ss.ans[n].done);
+    const curLine = lines.findIndex((ln) => ln.includes(ss.cur));
+    return h("div", { class: "t-pop t-set" + ap("tset", "1") },
+      h("div", { class: "row" }, h("b", null, "View"), h("span", { class: "spacer" }), h("button", { class: "icon-btn", onclick: () => { ss.settingsOpen = false; render(); } }, icon("x"))),
+      h("div", { class: "t-set-row" }, h("span", null, "Notes"), seg([["folded", "Folded"], ["full", "Full"]], S().tNotesFull ? "full" : "folded", (v) => { O.set("tNotesFull", v === "full"); Object.keys(ss.lines).forEach((k) => { if (ss.lines[k] === "open") delete ss.lines[k]; }); render(); })),
+      h("div", { class: "t-set-row" }, h("span", null, "Labels"), seg([["full", "Full words"], ["short", "Short"]], labelsFull() ? "full" : "short", (v) => { O.set("tLabelsFull", v === "full"); render(); })),
+      lines.length > 1 ? (() => {
+        const closedNow = lines.some((l, i) => ss.lines[i] === "closed" || (ss.lines[i] !== "open" && lineDone(l) && i !== curLine));
+        return h("div", { class: "t-set-row" }, h("span", null, "Lines"),
+          closedNow ? h("button", { class: "btn", onclick: () => { lines.forEach((l, i) => { ss.lines[i] = "open"; }); render(); } }, "▾ Expand all")
+            : h("button", { class: "btn", onclick: () => { lines.forEach((l, i) => { if (lineDone(l) && i !== curLine) ss.lines[i] = "closed"; else delete ss.lines[i]; }); render(); } }, "▸ Minimize finished"));
+      })() : null,
+      h("div", { class: "t-set-row" }, h("span", null, "Colors"), h("button", { class: "btn", onclick: () => { const pal = shuffle(palette()); ss.colors = ss.units.map((u, n) => pal[n % pal.length]); render(); } }, "⟳ New colors")),
+      lines.length > 1 ? h("div", { class: "muted small" }, "Long sentences are split into lines by length only, so the lines give no grammar clues.") : null);
+  }
+
   // ---------- Charts ----------
   function openCharts() {
     const ss = T.session;
@@ -592,16 +641,16 @@
     const s = ss.s;
     const stepNames = ss.dir === "e2g" ? ["Build each word", "Skeleton", "Greek sentence"] : ["Parse each word", "Skeleton", "English"];
     const phaseIdx = ss.phase === "parse" || ss.phase === "parsed" ? 0 : ss.phase === "skeleton" ? 1 : 2;
-    const head = h("div", { class: "s-head" },
-      h("button", { class: "btn", onclick: () => { if (confirm("Stop translating? This sentence won't be saved.")) T.close(); } }, "✕ Close"),
-      h("div", { style: "min-width:0" }, h("b", null, ss.dir === "e2g" ? "English → Greek" : "Translate"),
+    const head = h("div", { class: "s-head t-head" },
+      h("button", { class: "btn t-close", title: "Close", onclick: () => { if (confirm("Stop translating? This sentence won't be saved.")) T.close(); } }, "✕", h("span", { class: "t-hide-sm" }, " Close")),
+      h("div", { class: "t-title" }, h("b", null, ss.dir === "e2g" ? "English → Greek" : "Translate"),
         h("div", { class: "muted small" }, [s.ref, ss.title !== s.ref ? ss.title : "", `${ss.i + 1} of ${ss.ids.length}`].filter(Boolean).join(" · "))),
-      h("div", { class: "bar t-hide-sm", style: "min-width:80px" }, h("i", { style: `width:${(100 * ss.i) / ss.ids.length}%` })),
-      h("div", { class: "t-hide-sm" }, seg([["full", "Full words"], ["short", "Short"]], labelsFull() ? "full" : "short", (v) => { O.set("tLabelsFull", v === "full"); render(); })),
+      h("div", { class: "bar t-hide-sm", style: "min-width:80px;max-width:260px" }, h("i", { style: `width:${(100 * ss.i) / ss.ids.length}%` })),
       h("div", { class: "t-help" },
-        h("button", { class: "btn", onclick: openCharts }, "Charts"),
-        h("button", { class: "btn" + (ss.hint ? " pri" : ""), onclick: openHint }, "💡 Hint"),
-        hintPop()));
+        h("button", { class: "btn", onclick: () => { ss.hint = null; ss.settingsOpen = false; openCharts(); } }, "Charts"),
+        h("button", { class: "btn" + (ss.hint ? " pri" : ""), onclick: () => { ss.settingsOpen = false; openHint(); } }, "💡 Hint"),
+        h("button", { class: "btn t-gear" + (ss.settingsOpen ? " pri" : ""), title: "View settings", onclick: () => { ss.settingsOpen = !ss.settingsOpen; ss.hint = null; render(); } }, icon("gear")),
+        hintPop(), settingsPop()));
     let main;
     if (ss.phase === "parse" || ss.phase === "parsed") main = parseScreen();
     else if (ss.phase === "skeleton") main = skeletonScreen();
@@ -610,24 +659,60 @@
       h("div", { class: "s-body" }, h("div", { class: "s-inner t-inner" + ap("tsent", ss.ids[ss.i] + "|" + ss.phase) },
         h("div", { class: "t-steps" }, stepNames.map((n, i) => h("span", { class: "t-st" + (i === phaseIdx ? " on" : i < phaseIdx ? " done" : "") }, i < phaseIdx ? "✓ " + n : `${i + 1} · ${n}`))),
         main)));
-    requestAnimationFrame(drawArrows);
+    requestAnimationFrame(() => { fitLines(); drawArrows(); });
     return el;
   };
 
   // Lines split by length only, so they give nothing away about the grammar.
+  // Lines are packed to the real width of the screen: if every word fits on
+  // one row it stays one row, and it only breaks where it would have to wrap.
+  // Word widths are measured after each draw (fitLines) and reused here.
+  T.fit = { width: 0, gap: 26, w: {} };
   function makeLines(units) {
-    const narrow = window.innerWidth < 760;
-    const maxChars = narrow ? 20 : 38, maxUnits = narrow ? 3 : 6;
-    const lines = [];
-    let cur = [], len = 0;
-    units.forEach((u, n) => {
-      const l = [...u.greek].length + 2;
-      if (cur.length && (len + l > maxChars || cur.length >= maxUnits)) { lines.push(cur); cur = []; len = 0; }
-      cur.push(n); len += l;
-    });
-    if (cur.length) lines.push(cur);
-    return lines;
+    const F = T.fit;
+    if (!F.width) return [units.map((u, n) => n)];
+    const W = units.map((u, n) => F.w[n] || [...u.greek].length * 13 + 18);
+    const pack = (avail) => {
+      const lines = [];
+      let cur = [], len = 0;
+      W.forEach((w, n) => {
+        if (cur.length && len + F.gap + w > avail) { lines.push(cur); cur = []; len = 0; }
+        len += (cur.length ? F.gap : 0) + w; cur.push(n);
+      });
+      if (cur.length) lines.push(cur);
+      return lines;
+    };
+    const total = W.reduce((x, w) => x + w, 0) + F.gap * (W.length - 1);
+    if (total <= F.width) return [W.map((w, n) => n)];
+    const avail = F.width - 36; // room for the ▾ button
+    const best = pack(avail);
+    // Same number of lines, but evened out so the last line isn't one lonely word.
+    let lo = Math.max(...W), hi = avail;
+    while (hi - lo > 4) { const mid = (lo + hi) / 2; if (pack(mid).length <= best.length) hi = mid; else lo = mid; }
+    return pack(hi);
   }
+  let refits = 0, refitTimer = null;
+  function fitLines() {
+    const ss = T.session, box = document.querySelector(".t-sent .t-lines");
+    if (!ss || !box) return;
+    const F = T.fit;
+    const words = box.querySelector(".t-words");
+    if (words) F.gap = parseFloat(getComputedStyle(words).columnGap) || F.gap;
+    F.width = box.clientWidth;
+    box.querySelectorAll(".t-w[data-u]").forEach((el) => {
+      const n = +el.dataset.u, gap = el.nextElementSibling && el.nextElementSibling.classList.contains("t-gap") ? el.nextElementSibling.offsetWidth + F.gap : 0;
+      F.w[n] = Math.ceil(el.offsetWidth + gap);
+    });
+    const want = JSON.stringify(makeLines(ss.units));
+    if (want !== T.drawnLines && refits < 3) {
+      refits++; clearTimeout(refitTimer); refitTimer = setTimeout(() => { refits = 0; }, 800);
+      // Line numbers move when the packing changes, so forget per-line open/closed choices.
+      if (JSON.parse(want).length !== JSON.parse(T.drawnLines || "[]").length) ss.lines = {};
+      render();
+    }
+  }
+  let resizeT = null;
+  window.addEventListener("resize", () => { clearTimeout(resizeT); resizeT = setTimeout(() => { if (T.session) fitLines(); }, 150); });
   const wavy = (c) => { const el = document.createElementNS("http://www.w3.org/2000/svg", "svg"); el.setAttribute("viewBox", "0 0 130 10"); el.setAttribute("class", "t-wave"); el.innerHTML = `<path d="M2 5 Q 10 0 18 5 T 34 5 T 50 5 T 66 5 T 82 5 T 98 5 T 114 5 T 128 5" fill="none" stroke="${c}" stroke-width="2.5" stroke-linecap="round"/>`; return el; };
   const postOf = (u) => { const s = T.session.s; const last = u.ids[u.ids.length - 1]; return s.tokens[last].post || ""; };
   const gapAfter = (u) => { const s = T.session.s; const t = s.tokens[u.ids[u.ids.length - 1] + 1]; return t && t.gap; };
@@ -636,27 +721,50 @@
   function stack(u, n, full) {
     const ss = T.session, a = ss.ans[n], c = ss.colors[n], e2g = ss.dir === "e2g";
     if (u.given) return h("div", { class: "t-given-tx" }, e2g ? u.greek : "“" + u.given + "”");
-    const parts = [];
     if (!full) {
       const fold = e2g ? (a.ok.form ? u.greek : null) : a.ok.ctx ? a.f.ctx : null;
       return fold ? h("div", { class: "t-fold" + (e2g ? " gk" : ""), style: "color:" + c }, fold) : null;
     }
+    // While you work on a word, what you've entered shows right away; Check marks it right or wrong.
+    const cur = n === ss.cur && ss.phase === "parse";
+    const st = (k) => (a.ok[k] === false ? " wrong" : a.ok[k] ? "" : " pend");
+    const has = (k) => (a.ok[k] || cur) && (a.f[k] || "").trim();
+    const parts = [];
     const f0 = unitForms(u)[0];
     if (a.ok.lex) parts.push(h("div", { class: "t-lex" }, "(" + (f0 ? f0.lemma : a.f.lex) + ")"));
-    if (!e2g && a.ok.mean) parts.push(h("div", { class: "t-gl" }, "“" + a.f.mean + "”"));
+    else if (has("lex")) parts.push(h("div", { class: "t-lex" + st("lex") }, "(" + a.f.lex + ")"));
+    if (!e2g && has("mean")) parts.push(h("div", { class: "t-gl" + st("mean") }, "“" + a.f.mean + "”"));
     if (e2g && a.ok.lex) { const g = f0 ? (E.gloss(f0.lemma) || "").split(/[,;]/)[0] : ""; if (g) parts.push(h("div", { class: "t-gl" }, "“" + g + "”")); }
-    const fields = fieldsNow(u, a);
-    if (fields.length && Object.keys(a.ok).some((k) => k.startsWith("p:") && a.ok[k])) {
-      parts.push(h("div", { class: "t-hr", style: "background:" + c }), h("div", { class: "t-ps" }, parseLabel(u, a, true)));
-    } else if (!fields.length && a.ok.kind && (a.ok.ctx || a.ok.form)) parts.push(h("div", { class: "t-hr", style: "background:" + c }), h("div", { class: "t-ps" }, a.f.kind));
-    if (!e2g && a.ok.ctx) parts.push(wavy(c), h("div", { class: "t-ctx" }, a.f.ctx));
+    const fields = a.f.kind ? fieldsNow(u, a) : [];
+    const chosen = fields.filter((fl) => a.f[fl]);
+    if (fields.length && (chosen.length && (cur || a.ok.parse))) {
+      const bits = [];
+      fields.forEach((fl, i) => {
+        const v = a.f[fl];
+        const lab = v ? (fl === "takes" ? "+ " : "") + E.optLabel(fl, v, labelsFull()) : "___";
+        const joinPN = fl === "number" && fields[i - 1] === "person";
+        if (i) bits.push(joinPN ? " " : ", ");
+        bits.push(h("span", { class: a.ok["p:" + fl] === false ? "wrong" : a.ok["p:" + fl] ? "" : "pend" }, lab));
+      });
+      parts.push(h("div", { class: "t-hr", style: "background:" + c }), h("div", { class: "t-ps" }, bits));
+    } else if (!fields.length && a.f.kind && (cur || a.ok.kind)) parts.push(h("div", { class: "t-hr", style: "background:" + c }), h("div", { class: "t-ps" + st("kind") }, a.f.kind));
+    if (!e2g && has("ctx")) parts.push(wavy(c), h("div", { class: "t-ctx" + st("ctx") }, a.f.ctx));
     if (e2g && a.ok.form) parts.push(wavy(c), h("div", { class: "t-ctx gk" }, u.greek));
+    else if (e2g && cur && (a.f.form || "").trim()) parts.push(wavy(c), h("div", { class: "t-ctx gk" + st("form") }, a.f.form));
     return parts.length ? h("div", { class: "t-ann", style: "color:" + c }, parts) : null;
+  }
+  // Update the notes under the current word without redrawing the page (keeps the keyboard open).
+  function refreshLive() {
+    const ss = T.session, el = document.querySelector(".t-w.cur .t-live");
+    if (!el || ss.cur < 0) return;
+    const st = stack(ss.units[ss.cur], ss.cur, true);
+    el.replaceChildren(...(st ? [st] : []));
   }
 
   function sentenceCard(opts = {}) {
     const ss = T.session, e2g = ss.dir === "e2g";
     const lines = makeLines(ss.units);
+    T.drawnLines = JSON.stringify(lines);
     const lineDone = (ln) => ln.every((n) => ss.ans[n].done);
     const curLine = lines.findIndex((ln) => ln.includes(ss.cur));
     const isClosed = (li) => {
@@ -691,7 +799,7 @@
             h("div", { class: "t-wd" },
               h("div", { class: e2g ? "t-en" : "t-gk", onclick: !u.given && !cur && ss.phase === "parse" ? () => { ss.cur = n; ss.hint = null; render(); } : null }, unitWord(u) + (e2g ? "" : postOf(u))),
               h("div", { class: "t-br", style: u.given ? "" : a.done || cur ? "border-color:" + c : "" })),
-            stack(u, n, full),
+            cur ? h("div", { class: "t-live" }, stack(u, n, true)) : stack(u, n, full),
             a.skip && !a.done ? h("div", { class: "t-tagw" }, "↷ Skipped") : null,
             a.hl ? h("div", { class: "t-tagw hl" }, "★ Highlighted") : null);
           return gapAfter(u) ? [word, h("div", { class: "t-gap" }, "…")] : word;
@@ -700,13 +808,6 @@
     const sofar = ss.units.map((u, n) => (u.given ? (e2g ? u.greek : u.given) : ss.ans[n].done ? (e2g ? u.greek : ss.ans[n].f.ctx) : null)).filter(Boolean);
     const all = ss.ans.every((a) => a.done);
     return h("div", { class: "card t-sent" },
-      h("div", { class: "row wrap t-sent-top" },
-        h("span", { class: "muted small" }, e2g ? "English → Greek" : "Lines are split by length only, so they give no grammar clues"),
-        h("span", { class: "spacer" }),
-        lines.length > 1 ? [h("button", { class: "btn link", onclick: () => { lines.forEach((l, i) => { ss.lines[i] = "open"; }); render(); } }, "▾ Expand all"),
-          h("button", { class: "btn link", onclick: () => { lines.forEach((l, i) => { ss.lines[i] = lineDone(l) && i !== curLine ? "closed" : ss.lines[i]; }); render(); } }, "▸ Minimize finished")] : null,
-        h("span", { class: "muted small" }, "Notes"),
-        seg([["folded", "Folded"], ["full", "Full"]], S().tNotesFull ? "full" : "folded", (v) => { O.set("tNotesFull", v === "full"); Object.keys(ss.lines).forEach((k) => { if (ss.lines[k] === "open") delete ss.lines[k]; }); render(); })),
       e2g ? h("div", { class: "t-prompt" }, h("span", { class: "muted small" }, "Translate into Greek: "), h("b", null, englishPrompt()),
         !ss.s.english && !(ss.notes && ss.notes.english) ? h("div", { class: "muted small" }, "Tip: translate this sentence Greek → English first, and your own English becomes the prompt here.") : null) : null,
       h("div", { class: "t-lines" }, rows, (() => { const a = document.createElementNS("http://www.w3.org/2000/svg", "svg"); a.setAttribute("class", "t-arrows"); return a; })()),
@@ -769,54 +870,93 @@
             a.done ? h("div", { class: "small" }, a.f.kind + (fieldsNow(u, a).length ? " · " + parseLabel(u, a) : "") + (e2g ? " · " : ""), e2g ? h("span", { class: "greek" }, u.greek) : null) :
               h("div", { class: "small muted" }, "🔒 Parse to Reveal")));
       }),
-      h("div", { class: "note", style: "margin-top:10px" }, h("b", null, "Colors are random "), "for every sentence. Each word's label appears only after you've parsed it, so the chart never gives an answer away."),
-      h("button", { class: "btn", style: "margin-top:10px", onclick: () => { const pal = shuffle(palette()); ss.colors = ss.units.map((u, n) => pal[n % pal.length]); render(); } }, "⟳ New colors"));
+      h("div", { class: "muted small", style: "margin-top:8px" }, "Colors are random. Labels unlock as you parse."));
   }
 
   function workspace() {
     const ss = T.session, n = ss.cur, u = ss.units[n], a = ss.ans[n], c = ss.colors[n], e2g = ss.dir === "e2g";
     const forms = unitForms(u), noKey = !forms.length;
+    if (!a.open) a.open = {};
+    if (!a.closed) a.closed = {};
     const okMark = (k) => (a.ok[k] === true ? h("span", { class: "t-okm" }, "✓") : a.ok[k] === false ? h("span", { class: "t-badm" }, "✕") : h("span", { class: "t-todo" }));
     const row = (k, label, control, extra) => h("div", { class: "t-row" + (a.ok[k] === false ? " bad" : "") }, h("div", { class: "t-k" }, okMark(k), label), h("div", { class: "t-v" }, control, extra || null));
-    const chip = (field, code, lab) => h("button", { class: "chip t-chip" + (a.f[field] === code ? " sel" : "") + (a.ok["p:" + field] === false && a.f[field] === code ? " wrong" : ""), style: a.f[field] === code ? "color:" + c : "",
-      onclick: () => { a.f[field] = a.f[field] === code ? null : code; delete a.ok["p:" + field]; delete a.ok.parse; render(); } }, lab);
+    // A finished question shrinks to one line to make room; tap ✎ to change it.
+    const compactRow = (k, label, value, valueClass) => h("div", { class: "t-row t-row-c" + (a.ok[k] === false ? " bad" : "") },
+      h("div", { class: "t-k" }, okMark(k), label),
+      h("button", { class: "t-cval" + (valueClass ? " " + valueClass : ""), style: "color:" + c, onclick: () => { a.open[k] = true; delete a.closed[k]; render(); } }, value, h("span", { class: "t-edit" }, "✎")));
+    const isCompact = (k, filled, needsClose) => filled && !a.open[k] && a.ok[k] !== false && (!needsClose || a.closed[k]);
+    const order = e2g ? ["lex", "form"] : ["lex", "mean", "ctx"];
+    const focusNext = (from) => {
+      const later = order.slice(order.indexOf(from) + 1).find((k) => !(a.f[k] || "").trim());
+      if (later) { a.open[later] = true; render(); return; }
+      checkUnit();
+    };
+    const enterText = (k) => () => { if ((a.f[k] || "").trim()) { a.closed[k] = true; delete a.open[k]; } focusNext(k); };
     let focusSet = false;
-    const af = (k) => { if (focusSet || a.ok[k]) return false; focusSet = true; return true; };
+    const af = (k) => { if (focusSet || a.ok[k] || ((a.f[k] || "").trim() && !a.open[k])) return false; focusSet = true; return true; };
     const rows = [];
-    const kindRow = row("kind", "What is it?", h("div", { class: "chips" }, E.KINDS.map((k) => h("button", {
+
+    // What is it?
+    if (isCompact("kind", !!a.f.kind)) rows.push(compactRow("kind", "What is it?", a.f.kind));
+    else rows.push(row("kind", "What is it?", h("div", { class: "chips" }, E.KINDS.map((k) => h("button", {
       class: "chip t-chip" + (a.f.kind === k ? " sel" : "") + (a.ok.kind === false && a.f.kind === k ? " wrong" : ""), style: a.f.kind === k ? "color:" + c : "",
-      onclick: () => { a.f.kind = a.f.kind === k ? null : k; delete a.ok.kind; delete a.ok.parse; render(); },
-    }, k === "Noun" && u.article ? "Noun + article" : k === "Adjective" && u.article ? "Adjective + article" : k === "Pronoun" && u.article ? "Pronoun + article" : k))));
-    rows.push(kindRow);
-    rows.push(row("lex", e2g ? "Greek word" : "Lexical form", greekIn({ value: a.f.lex || "", placeholder: "dictionary form", autofocus: af("lex"), oninput: (v) => { a.f.lex = v; delete a.ok.lex; }, onenter: checkUnit }),
+      onclick: () => { const changed = a.f.kind !== k; a.f.kind = k; delete a.ok.kind; delete a.open.kind; if (changed) { delete a.ok.parse; } render(); },
+    }, k)))));
+
+    // Lexical form
+    const lexLabel = e2g ? "Greek word" : "Lexical form";
+    if (isCompact("lex", (a.f.lex || "").trim(), true)) rows.push(compactRow("lex", lexLabel, a.f.lex, "gk"));
+    else rows.push(row("lex", lexLabel, greekIn({ value: a.f.lex || "", placeholder: "dictionary form", autofocus: af("lex") || a.open.lex, oninput: (v) => { a.f.lex = v; delete a.ok.lex; refreshLive(); }, onenter: enterText("lex") }),
       h("span", { class: "muted small" }, "the form you'd look up")));
-    if (!e2g) rows.push(row("mean", "Meaning", textIn({ value: a.f.mean || "", placeholder: "dictionary meaning", autofocus: af("mean"), oninput: (v) => { a.f.mean = v; delete a.ok.mean; a.override = false; }, onenter: checkUnit }),
-      a.ok.mean === false && (a.f.mean || "").trim() ? h("button", { class: "btn link", onclick: () => { a.override = true; a.ok.mean = true; render(); } }, "✓ I was right, count it") : null));
+
+    // Meaning
+    if (!e2g) {
+      if (isCompact("mean", (a.f.mean || "").trim(), true)) rows.push(compactRow("mean", "Meaning", a.f.mean));
+      else rows.push(row("mean", "Meaning", textIn({ value: a.f.mean || "", placeholder: "dictionary meaning", autofocus: af("mean") || a.open.mean, oninput: (v) => { a.f.mean = v; delete a.ok.mean; a.override = false; refreshLive(); }, onenter: enterText("mean") }),
+        a.ok.mean === false && (a.f.mean || "").trim() ? h("button", { class: "btn link", onclick: () => { a.override = true; a.ok.mean = true; render(); } }, "✓ I was right, count it") : null));
+    }
+
+    // Parsing: each choice shrinks once picked
     const fields = a.f.kind ? fieldsNow(u, a) : [];
+    const fieldBox = (fl) => {
+      const k = "p:" + fl, v = a.f[fl];
+      if (v && !a.open[k] && a.ok[k] !== false)
+        return h("button", { class: "t-fpill" + (a.ok[k] ? " ok" : ""), style: "color:" + c, onclick: () => { a.open[k] = true; render(); } },
+          h("span", { class: "lbl" }, E.FIELDS[fl].name), E.optLabel(fl, v, labelsFull()), h("span", { class: "t-edit" }, "✎"));
+      return h("div", { class: "t-field" + (a.ok[k] === false ? " bad" : "") },
+        h("span", { class: "lbl" }, E.FIELDS[fl].name),
+        h("div", { class: "chips" }, E.FIELDS[fl].opts.filter((o) => !(fl === "case" && o[0] === "V" && a.f.kind !== "Noun")).map((o) => h("button", {
+          class: "chip t-chip" + (v === o[0] ? " sel" : "") + (a.ok[k] === false && v === o[0] ? " wrong" : ""), style: v === o[0] ? "color:" + c : "",
+          onclick: () => { a.f[fl] = o[0]; delete a.ok[k]; delete a.ok.parse; delete a.open[k]; render(); },
+        }, labelsFull() ? o[1] : o[2]))));
+    };
     rows.push(row("parse", e2g ? "What it needs to be" : "Parse",
       !a.f.kind ? h("span", { class: "muted small" }, "Choose what it is first.") :
         !fields.length ? h("span", { class: "muted small" }, a.f.kind + "s have nothing to parse.") :
-          h("div", { class: "t-fields" }, fields.map((fl) => h("div", { class: "t-field" + (a.ok["p:" + fl] === false ? " bad" : "") },
-            h("span", { class: "lbl" }, E.FIELDS[fl].name),
-            h("div", { class: "chips" }, E.FIELDS[fl].opts.filter((o) => !(fl === "case" && o[0] === "V" && a.f.kind !== "Noun")).map((o) => chip(fl, o[0], labelsFull() ? o[1] : o[2]))))))));
-    if (!e2g) rows.push(row("ctx", "In this sentence", textIn({ value: a.f.ctx || "", placeholder: "how it reads here, e.g. “of man”", autofocus: af("ctx"), oninput: (v) => { a.f.ctx = v; delete a.ok.ctx; }, onenter: checkUnit })));
-    else {
+          h("div", { class: "t-fields" }, fields.map(fieldBox))));
+
+    // In this sentence / write the form
+    if (!e2g) {
+      if (isCompact("ctx", (a.f.ctx || "").trim(), true)) rows.push(compactRow("ctx", "In this sentence", a.f.ctx));
+      else rows.push(row("ctx", "In this sentence", textIn({ value: a.f.ctx || "", placeholder: "how it reads here, e.g. “of man”", autofocus: af("ctx") || a.open.ctx, oninput: (v) => { a.f.ctx = v; delete a.ok.ctx; refreshLive(); }, onenter: enterText("ctx") }), a.ctxMsg ? h("div", { class: "note t-ctxmsg" }, a.ctxMsg) : null));
+    } else {
       const preview = h("div", { class: "t-formprev" });
       const paint = () => { const v = a.f.form || ""; if (!v.trim()) { preview.replaceChildren(); return; } const r = E.restoreSentence(v); preview.replaceChildren(h("span", { class: "muted small" }, "With marks: "), h("span", { class: "greek", style: "font-size:19px" }, r.words.map((w) => [w.segs.map((sg) => sg.add ? h("span", { class: "t-add" }, sg.t) : sg.t), " "]))); };
-      rows.push(row("form", "Write the form", greekIn({ value: a.f.form || "", placeholder: u.article ? "article + word" : "the Greek word", autofocus: af("form"), oninput: (v) => { a.f.form = v; delete a.ok.form; paint(); }, onenter: checkUnit }), preview));
-      paint();
+      if (isCompact("form", (a.f.form || "").trim(), true)) rows.push(compactRow("form", "Write the form", a.f.form, "gk"));
+      else { rows.push(row("form", "Write the form", greekIn({ value: a.f.form || "", placeholder: u.article ? "article + word" : "the Greek word", autofocus: af("form") || a.open.form, oninput: (v) => { a.f.form = v; delete a.ok.form; paint(); refreshLive(); }, onenter: enterText("form") }), preview)); paint(); }
     }
     return h("div", { class: "card pad t-work" + ap("twork", ss.ids[ss.i] + "|" + n) },
       h("div", { class: "row wrap" }, h("span", { class: "muted" }, e2g ? "Now building" : "Now parsing"),
-        h("span", { class: e2g ? "t-now-en" : "t-now-gk", style: "color:" + c }, e2g ? cueFor(u, n) : u.greek), h("span", { class: "spacer" }),
+        h("span", { class: e2g ? "t-now-en" : "t-now-gk", style: "color:" + c }, e2g ? cueFor(u, n) : u.greek),
+        u.article ? h("span", { class: "muted small" }, "with its article") : null, h("span", { class: "spacer" }),
         noKey ? h("span", { class: "t-tag warn" }, "No answer key for this word · check it yourself") : null),
       rows,
       h("div", { class: "row wrap", style: "margin-top:12px" },
         h("button", { class: "btn" + (a.hl ? " pri" : ""), style: a.hl ? "" : "color:#b08a00", onclick: () => { a.hl = !a.hl; render(); } }, a.hl ? "★ Highlighted" : "★ Highlight"),
-        h("button", { class: "btn", onclick: () => { a.skip = true; ss.hint = null; advance(); } }, "↷ Skip for now"),
+        h("button", { class: "btn", onclick: () => { a.skip = true; ss.hint = null; advance(); } }, "↷ Skip"),
         h("span", { class: "spacer" }),
-        h("span", { class: "hint keys" }, "Enter checks"),
-        h("button", { class: "btn pri big", onclick: checkUnit }, "Check ↩")));
+        h("span", { class: "hint keys" }, "Enter moves on"),
+        h("button", { class: "btn pri big", onclick: checkUnit }, "Check")));
   }
 
   // ---------- Step 2: skeleton ----------
@@ -839,6 +979,38 @@
       h("span", { class: "t-cl-bar", style: "background:" + (u.given ? "var(--muted)" : c) }),
       h("span", { class: "t-pc-tx" + (e2g ? " gk" : ""), style: u.given ? "" : "color:" + c }, under));
   }
+  // One plain instruction at a time, based on where the student is.
+  function skeletonGuide(O2, canDrag) {
+    const noRole = O2.rows.findIndex((r) => !r.role);
+    let n, title, text;
+    if (!O2.rows.length) {
+      n = 1; title = "Find the main verb.";
+      text = canDrag ? "It's the word you parsed as a verb that tells what happens. Drag it down into “Your skeleton” (or click it, then press Make a line). It goes at the top." : "It's the word you parsed as a verb that tells what happens. Tap it, then press Make a line. It goes at the top.";
+    } else if (O2.tray.length) {
+      n = 2; title = "Add the next piece.";
+      text = "Pick a word or phrase that goes with a line you already have: the subject (nominative), the object (accusative), or a preposition with its noun. Select all its words, articles too, and make a line. Then press → to tuck it under the word it goes with" + (canDrag ? ", or drag the ⋮⋮ handle to the right." : ".");
+    } else if (noRole >= 0) {
+      n = 3; title = "Name each line.";
+      text = "Every word is placed. Use each line's dropdown to say what it is: Verb, Subject, Direct object, Prepositional phrase, and so on.";
+    } else {
+      n = 4; title = "Check it.";
+      text = "Your skeleton looks complete. Press Check skeleton. It's fine if it isn't exactly like Ostraka's; it only has to make sense.";
+    }
+    return h("div", { class: "t-guide" },
+      h("div", { class: "t-gsteps" }, [1, 2, 3, 4].map((k) => h("span", { class: "t-stepdot" + (k < n ? " done" : k === n ? " on" : "") }, k < n ? "✓" : String(k)))),
+      h("div", null, h("b", null, "Step " + n + ": " + title + " "), h("span", null, text)));
+  }
+  function skeletonExample() {
+    const line = (lvl, gk, en, role) => h("div", { class: "t-exrow", style: `margin-left:${lvl * 28}px` },
+      lvl ? h("span", { class: "t-elbow" }, "└") : null, h("span", { class: "gk" }, gk), h("span", { class: "muted" }, en), h("span", { class: "t-tag" }, role));
+    return h("div", { class: "t-ex" },
+      h("div", { class: "small" }, "The skeleton shows what hangs on what. The verb goes on top; everything that tells you more about it sits under it, pushed to the right. Example:"),
+      h("div", { class: "gk", style: "font-size:18px;margin:6px 0" }, "ὁ λόγος ἦν πρὸς τὸν θεόν"),
+      line(0, "ἦν", "was", "Verb"),
+      line(1, "ὁ λόγος", "the Word", "Subject"),
+      line(1, "πρὸς τὸν θεόν", "with God", "Prepositional phrase"),
+      h("div", { class: "small muted", style: "margin-top:6px" }, "Read it back: “The Word was with God.” A word that describes a noun (an adjective or a genitive) goes one step further right, under that noun."));
+  }
   function skeletonScreen() {
     const ss = T.session, O2 = ss.outline;
     const sel = O2.sel;
@@ -847,26 +1019,79 @@
       if (!sel.length) return;
       const units = sel.slice().sort((a, b) => a - b);
       O2.rows.push({ units, level: O2.rows.length ? 1 : 0, role: "" });
-      O2.tray = O2.tray.filter((n) => !units.includes(n)); O2.sel = []; O2.result = null; render();
+      O2.tray = O2.tray.filter((n) => !units.includes(n)); O2.sel = []; O2.result = null; O2.passed = false; render();
     };
-    const move = (i, d) => { const j = i + d; if (j < 0 || j >= O2.rows.length) return; [O2.rows[i], O2.rows[j]] = [O2.rows[j], O2.rows[i]]; O2.result = null; render(); };
+    // ---- Drag and drop (mouse / trackpad) ----
+    // Words: drag from "Your words" into a line, onto empty outline space for a
+    // new line, or back to "Your words". Lines: drag the ⋮⋮ handle up or down to
+    // reorder, and left or right to set the indent.
+    const canDrag = matchMedia("(pointer: fine)").matches;
+    const clearDz = () => document.querySelectorAll(".dz-on,.dz-top,.dz-bot").forEach((el) => el.classList.remove("dz-on", "dz-top", "dz-bot"));
+    const takeWord = (n) => {
+      O2.tray = O2.tray.filter((x) => x !== n);
+      O2.rows.forEach((r) => { r.units = r.units.filter((x) => x !== n); });
+      O2.rows = O2.rows.filter((r) => r.units.length);
+      O2.sel = O2.sel.filter((x) => x !== n);
+    };
+    const startDrag = (e, d) => { d.x = e.clientX; T.drag = d; e.dataTransfer.effectAllowed = "move"; try { e.dataTransfer.setData("text/plain", "ostraka"); } catch (er) {} e.stopPropagation(); };
+    const endDrag = () => { T.drag = null; clearDz(); };
+    const dropOn = (kind, idx) => ({
+      ondragover: (e) => {
+        if (!T.drag) return;
+        e.preventDefault(); e.stopPropagation();
+        clearDz();
+        const el = e.currentTarget;
+        if (kind === "row" && T.drag.type === "row") { const r = el.getBoundingClientRect(); el.classList.add(e.clientY < r.top + r.height / 2 ? "dz-top" : "dz-bot"); }
+        else el.classList.add("dz-on");
+      },
+      ondragleave: (e) => { if (!e.currentTarget.contains(e.relatedTarget)) e.currentTarget.classList.remove("dz-on", "dz-top", "dz-bot"); },
+      ondrop: (e) => {
+        const d = T.drag; if (!d) return;
+        e.preventDefault(); e.stopPropagation();
+        const el = e.currentTarget;
+        if (d.type === "word") {
+          const target = kind === "row" ? O2.rows[idx] : null;
+          takeWord(d.n);
+          if (kind === "tray") O2.tray = O2.tray.concat(d.n).sort((a, b) => a - b);
+          else if (target && O2.rows.includes(target)) target.units = target.units.concat(d.n).sort((a, b) => a - b);
+          else O2.rows.push({ units: [d.n], level: O2.rows.length ? 1 : 0, role: "" });
+        } else if (d.type === "row") {
+          const row = O2.rows[d.i];
+          if (kind === "tray") { O2.tray = O2.tray.concat(row.units).sort((a, b) => a - b); O2.rows.splice(d.i, 1); }
+          else {
+            let to = O2.rows.length;
+            if (kind === "row") { const r = el.getBoundingClientRect(); to = e.clientY < r.top + r.height / 2 ? idx : idx + 1; }
+            O2.rows.splice(d.i, 1);
+            if (to > d.i) to--;
+            O2.rows.splice(to, 0, row);
+            row.level = to === 0 ? 0 : Math.max(0, Math.min(4, row.level + Math.round((e.clientX - d.x) / 36)));
+          }
+        }
+        O2.result = null; O2.passed = false; endDrag(); render();
+      },
+    });
+    const wordDrag = (n) => canDrag && !O2.passed ? { draggable: "true", ondragstart: (e) => startDrag(e, { type: "word", n }), ondragend: endDrag } : {};
+    const move = (i, d) => { const j = i + d; if (j < 0 || j >= O2.rows.length) return; [O2.rows[i], O2.rows[j]] = [O2.rows[j], O2.rows[i]]; O2.result = null; O2.passed = false; render(); };
     const outlineRows = O2.rows.map((r, i) => {
       const rr = res && res.results[i];
-      return h("div", { class: "t-orow" + (rr ? (rr.ok ? " ok" : " bad") : ""), style: `margin-left:${r.level * 36}px` },
+      return h("div", Object.assign({ class: "t-orow" + (rr ? (rr.ok ? " ok" : " bad") : ""), style: `margin-left:${r.level * 36}px` }, canDrag ? dropOn("row", i) : {}),
+        canDrag && !O2.passed ? h("span", { class: "t-handle", title: "Drag to move or indent this line", draggable: "true",
+          ondragstart: (e) => { startDrag(e, { type: "row", i }); const row = e.currentTarget.parentElement; try { e.dataTransfer.setDragImage(row, 12, 16); } catch (er) {} setTimeout(() => row.classList.add("dragging"), 0); },
+          ondragend: endDrag }, "⋮⋮") : null,
         r.level ? h("span", { class: "t-elbow" }, "└") : null,
-        h("div", { class: "t-ph" }, r.units.map((n) => pieceCell(n, true))),
-        h("select", { class: "t-role", onchange: (e) => { r.role = e.target.value; O2.result = null; render(); } },
+        h("div", { class: "t-ph" }, r.units.map((n) => h("span", Object.assign({ class: "t-dw" }, wordDrag(n)), pieceCell(n, true)))),
+        O2.passed ? (r.role ? h("span", { class: "t-tag ok" }, r.role) : null) : h("select", { class: "t-role", onchange: (e) => { r.role = e.target.value; O2.result = null; O2.passed = false; render(); } },
           h("option", { value: "" }, "Choose a role ▾"), E.ROLES.map((x) => h("option", { value: x, selected: r.role === x || null }, x))),
-        h("div", { class: "t-ctrl" },
+        O2.passed ? null : h("div", { class: "t-ctrl" },
           h("button", { class: "icon-btn", title: "Move up", onclick: () => move(i, -1) }, "↑"),
           h("button", { class: "icon-btn", title: "Move down", onclick: () => move(i, 1) }, "↓"),
-          h("button", { class: "icon-btn", title: "Outdent", onclick: () => { r.level = Math.max(0, r.level - 1); O2.result = null; render(); } }, "←"),
-          h("button", { class: "icon-btn", title: "Indent under the line above", onclick: () => { r.level = Math.min(4, r.level + 1); O2.result = null; render(); } }, "→"),
-          h("button", { class: "icon-btn", title: "Take apart", onclick: () => { O2.tray = O2.tray.concat(r.units).sort((a, b) => a - b); O2.rows.splice(i, 1); O2.result = null; render(); } }, icon("x"))),
+          h("button", { class: "icon-btn", title: "Outdent", onclick: () => { r.level = Math.max(0, r.level - 1); O2.result = null; O2.passed = false; render(); } }, "←"),
+          h("button", { class: "icon-btn", title: "Indent under the line above", onclick: () => { r.level = Math.min(4, r.level + 1); O2.result = null; O2.passed = false; render(); } }, "→"),
+          h("button", { class: "icon-btn", title: "Take apart", onclick: () => { O2.tray = O2.tray.concat(r.units).sort((a, b) => a - b); O2.rows.splice(i, 1); O2.result = null; O2.passed = false; render(); } }, icon("x"))),
         rr && !rr.ok ? h("div", { class: "t-omsg" }, rr.message) : null);
     });
     const check = () => {
-      if (O2.tray.length) { O2.result = { ok: false, results: O2.rows.map(() => ({ ok: true })), msg: "Put every word into the outline first." }; render(); return; }
+      if (O2.tray.length) { O2.result = { ok: false, results: O2.rows.map(() => ({ ok: true })), msg: "Put every word into the skeleton first." }; render(); return; }
       const r = E.checkOutline(ss.s, ss.units, O2.rows);
       O2.result = r;
       if (r.ok) O2.passed = true;
@@ -876,22 +1101,23 @@
     return [
       sentenceCard({ allClosed: true }),
       h("div", { class: "card pad stack" },
-        h("div", { class: "row wrap" }, h("b", { style: "font-size:17px" }, "Build the outline"), h("span", { class: "spacer" }),
-          h("span", { class: "muted small" }, "Tap words to group them into phrases · use ← → to indent a phrase under the word it goes with · pick a role for each line")),
+        h("div", { class: "row wrap" }, h("b", { style: "font-size:17px" }, "Build the skeleton"), h("span", { class: "spacer" }),
+          h("button", { class: "btn sm", onclick: () => { O2.ex = !O2.ex; render(); } }, O2.ex ? "Hide example" : "How does this work?")),
+        O2.ex ? skeletonExample() : null,
+        O2.passed ? null : skeletonGuide(O2, canDrag),
         O2.passed ? null : [
           h("div", { class: "label", style: "margin:4px 0 0" }, "Your words"),
-          h("div", { class: "t-tray" }, O2.tray.length ? O2.tray.map((n) => h("button", { class: "t-trayb" + (sel.includes(n) ? " sel" : ""), onclick: () => { O2.sel = sel.includes(n) ? sel.filter((x) => x !== n) : sel.concat(n); render(); } }, pieceCell(n))) :
-            h("span", { class: "muted small" }, "Every word is in your outline."),
-            sel.length ? h("button", { class: "btn pri", onclick: group }, `⊕ Group ${sel.length} word${sel.length === 1 ? "" : "s"}`) : null)],
-        h("div", { class: "label", style: "margin:6px 0 0" }, "Your outline"),
-        O2.rows.length ? h("div", { class: "t-outline" }, outlineRows) : h("div", { class: "t-drop" }, "Select words above and tap Group to make your first line. Start with the verb."),
+          h("div", Object.assign({ class: "t-tray" }, canDrag ? dropOn("tray") : {}), O2.tray.length ? O2.tray.map((n) => h("div", Object.assign({ class: "t-trayb" + (sel.includes(n) ? " sel" : ""), role: "button", tabindex: "0" }, wordDrag(n), { onkeydown: (e) => { if (e.key === " " || e.key === "Enter") { e.preventDefault(); e.currentTarget.click(); } }, onclick: () => { O2.sel = sel.includes(n) ? sel.filter((x) => x !== n) : sel.concat(n); render(); } }), pieceCell(n))) :
+            h("span", { class: "muted small" }, "Every word is in your skeleton."),
+            sel.length ? h("button", { class: "btn pri", onclick: group }, `⊕ Make a line from ${sel.length} word${sel.length === 1 ? "" : "s"}`) : null)],
+        h("div", { class: "label", style: "margin:6px 0 0" }, "Your skeleton"),
+        O2.rows.length ? h("div", Object.assign({ class: "t-outline" }, canDrag && !O2.passed ? dropOn("outline") : {}), outlineRows, canDrag && !O2.passed && O2.tray.length ? h("div", { class: "t-drop sm" }, "Drop a word here to start a new line") : null) : h("div", Object.assign({ class: "t-drop" }, canDrag ? dropOn("outline") : {}), canDrag ? "Drag the main verb here, or click it and press Make a line." : "Tap the main verb, then press Make a line."),
         res && res.msg ? h("div", { class: "note", style: "color:var(--bad)" }, res.msg) : null,
-        O2.passed ? h("div", { class: "t-found" }, h("span", { class: "t-ok" }, "✓"), h("div", null, h("b", null, "Your outline works."), " Here's Ostraka's suggested outline to compare.")) : null,
+        O2.passed ? h("div", { class: "t-found" }, h("span", { class: "t-ok" }, "✓"), h("div", null, h("b", null, "Your outline works."), " Here's Ostraka's suggested outline to compare."), h("button", { class: "btn sm", style: "margin-left:auto", onclick: () => { O2.passed = false; O2.result = null; render(); } }, "✎ Edit skeleton")) : null,
         suggestion ? h("div", { class: "t-outline sugg" }, suggestion.map((r) => h("div", { class: "t-orow", style: `margin-left:${r.level * 36}px` },
           r.level ? h("span", { class: "t-elbow" }, "└") : null, h("div", { class: "t-ph" }, r.units.map((n) => pieceCell(n, true))),
           h("span", { class: "t-tag" + (r.role === "Verb" ? " ok" : "") }, r.role + (r.why ? " · " + r.why : ""))))) : null,
         h("div", { class: "row wrap" },
-          h("span", { class: "muted small" }, "Roles: " + E.ROLES.join(" · ")),
           h("span", { class: "spacer" }),
           !O2.passed && res && !res.ok && !O2.shown ? h("button", { class: "btn", onclick: () => { O2.shown = true; ss.help.structure = true; render(); } }, "Show Ostraka's outline") : null,
           O2.passed || O2.shown ? h("button", { class: "btn pri big", onclick: () => { ss.phase = "final"; ss.hint = null; render(); } }, ss.dir === "e2g" ? "Write the Greek →" : "Write the English →") :
@@ -971,6 +1197,18 @@
     if (ss.dir === "g2e") {
       d.tNotes[s.id] = { ctx: ss.units.map((u, n) => (u.given ? u.given : ss.ans[n].f.ctx || "")), english: ss.english.trim() || (d.tNotes[s.id] || {}).english || "" };
     }
+    d.tWork[key] = {
+      at: r.at, dir: ss.dir,
+      units: ss.units.map((u, n) => {
+        const a = ss.ans[n], f0 = unitForms(u)[0];
+        return { greek: u.greek, post: postOf(u), gap: !!gapAfter(u), given: u.given || null, cue: ss.dir === "e2g" ? cueFor(u, n) : null,
+          kind: a.f.kind || "", lex: u.given ? "" : (f0 ? f0.lemma : a.f.lex || ""), mean: a.f.mean || (ss.dir === "e2g" && f0 ? (E.gloss(f0.lemma) || "").split(/[,;]/)[0] : ""),
+          parse: u.given ? "" : fieldsNow(u, a).length ? parseLabel(u, a) : "", ctx: a.f.ctx || "", takes: a.f.takes || null };
+      }),
+      outline: (ss.outline ? ss.outline.rows : []).map((r0) => ({ units: r0.units.slice(), level: r0.level, role: r0.role })),
+      text: ss.dir === "e2g" ? (ss.greekText ? E.restoreSentence(ss.greekText).words.map((w) => w.text + w.post).join(" ") : sentenceGreek(s)) : ss.english.trim(),
+      prompt: ss.dir === "e2g" ? englishPrompt() : "",
+    };
     const today = new Date().toISOString().slice(0, 10);
     if (!d.tDays.includes(today)) d.tDays.push(today);
     O.save();
@@ -989,7 +1227,7 @@
     const help = usedHelp(r);
     const tag = help ? [r.hints ? `${r.hints} hint${r.hints === 1 ? "" : "s"}` : "", r.charts ? "chart" : "", r.structure ? "structure" : ""].filter(Boolean).join(" & ") : "";
     const pal = ["#e8b665", "#c9a050", "#f3d9a0", "#a8743a"];
-    const shards = Array.from({ length: 22 }, (_, i) => { const a = (i / 22) * Math.PI * 2 + (i % 3) * 0.2, rr = 100 + ((i * 37) % 70), x = 260 + Math.cos(a) * rr * 1.35, y = 95 + Math.sin(a) * rr * 0.48, sz = 6 + ((i * 7) % 9); return `<polygon class="t-shard" style="--d:${(i % 7) * 40}ms;--x:${(260 - x) * 0.6}px;--y:${(95 - y) * 0.6}px" points="0,${-sz} ${sz * 0.8},${sz * 0.4} ${-sz * 0.6},${sz * 0.7}" fill="${pal[i % 4]}" opacity="${0.55 + (i % 4) * 0.12}" transform="translate(${x} ${y}) rotate(${(i * 53) % 360})"/>`; }).join("");
+    const shards = Array.from({ length: 22 }, (_, i) => { const a = (i / 22) * Math.PI * 2 + (i % 3) * 0.2, rr = 100 + ((i * 37) % 70), x = 260 + Math.cos(a) * rr * 1.35, y = 60 + Math.sin(a) * rr * 0.32, sz = 6 + ((i * 7) % 9); return `<polygon class="t-shard" style="--d:${(i % 7) * 40}ms;--x:${(260 - x) * 0.6}px;--y:${(60 - y) * 0.6}px" points="0,${-sz} ${sz * 0.8},${sz * 0.4} ${-sz * 0.6},${sz * 0.7}" fill="${pal[i % 4]}" opacity="${0.55 + (i % 4) * 0.12}" transform="translate(${x} ${y}) rotate(${(i * 53) % 360})"/>`; }).join("");
     const svgShards = h("div", { class: "t-shards", html: `<svg width="520" height="210" viewBox="0 0 520 210">${shards}</svg>` });
     const last = ss.i >= ss.ids.length - 1;
     const mm = Math.floor(r.secs / 60) + ":" + String(r.secs % 60).padStart(2, "0");
@@ -1006,7 +1244,76 @@
           [[`${r.units} / ${r.units}`, e2g ? "words built" : "words parsed"], [r.firstTry, "right first try"], [mm, "time"], ["🔥 " + streak(), "day streak"]].map(([a, b]) => h("div", null, h("b", null, a), h("span", null, b)))),
         h("div", { class: "row", style: "margin-top:6px" },
           h("button", { class: "btn big", style: "flex:1", onclick: () => { closeModal(); prepare(); render(); } }, help ? "↺ Try again without hints" : "↺ Try again"),
+          h("button", { class: "btn big", style: "flex:1", onclick: () => showWork([s.id + "|" + ss.dir], () => openModal(completeSheet, false)) }, "📄 Show work"),
           h("button", { class: "btn pri big", style: "flex:1", "data-autofocus": "", onclick: () => { closeModal(); if (last) { T.session = null; tr.tab = "library"; window.OUI.st.section = "translate"; render(); } else { ss.i++; prepare(); render(); } } }, last ? "Finish" : "Next sentence →"))));
+  }
+
+  // ---------- Show work (for handing in homework) ----------
+  const workKeys = (ids) => {
+    const d = O.data, out = [];
+    d.sentences.filter((s) => ids.includes(s.id)).forEach((s) => ["g2e", "e2g"].forEach((dir) => { if (d.tWork[s.id + "|" + dir]) out.push(s.id + "|" + dir); }));
+    return out;
+  };
+  const WORK_COLORS = ["#1f78b4", "#2f8a43", "#c26a12", "#c2357e", "#6a4fc9", "#957800", "#d0532a", "#13857a", "#5c8a0e", "#b8336a", "#3d5fd1", "#a8630f"];
+  const waveSvg = (c) => `<svg class="ws-wave" viewBox="0 0 130 10"><path d="M2 5 Q 10 0 18 5 T 34 5 T 50 5 T 66 5 T 82 5 T 98 5 T 114 5 T 128 5" fill="none" stroke="${c}" stroke-width="2.5" stroke-linecap="round"/></svg>`;
+  function workSheet(keys, title) {
+    const d = O.data;
+    const name = S().tStudentName || "";
+    const sheet = h("div", { class: "ws" },
+      h("div", { class: "ws-head" },
+        h("div", null, h("div", { class: "ws-title" }, title || "Translation work"),
+          h("div", { class: "ws-sub" }, new Date().toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" }))),
+        h("div", { class: "ws-name" }, name ? name : "")),
+      keys.map((key, i) => {
+        const [sid, dir] = key.split("|");
+        const s = byId(sid), w = d.tWork[key];
+        if (!s || !w) return null;
+        const e2g = dir === "e2g";
+        const words = w.units.map((u, n) => {
+          const c = WORK_COLORS[n % WORK_COLORS.length];
+          const top = e2g ? u.cue || u.mean || "" : u.greek + (u.post || "");
+          if (u.given) return [h("div", { class: "ws-w given" }, h("div", { class: "ws-wd" }, h("div", { class: e2g ? "ws-en" : "ws-gk" }, top), h("div", { class: "ws-br" })), h("div", { class: "ws-given" }, e2g ? u.greek : "“" + u.given + "”")), u.gap ? h("div", { class: "ws-gap" }, "…") : null];
+          const stack = [];
+          if (u.lex) stack.push(h("div", { class: "ws-lex" }, "(" + u.lex + ")"));
+          if (u.mean) stack.push(h("div", { class: "ws-gl" }, "“" + u.mean + "”"));
+          stack.push(h("div", { class: "ws-hr", style: "background:" + c }), h("div", { class: "ws-ps" }, u.parse ? u.parse : u.kind));
+          stack.push(h("div", { html: waveSvg(c) }), h("div", { class: "ws-ctx" + (e2g ? " gk" : "") }, e2g ? u.greek : u.ctx));
+          return [h("div", { class: "ws-w" }, h("div", { class: "ws-wd" }, h("div", { class: e2g ? "ws-en" : "ws-gk" }, top), h("div", { class: "ws-br", style: "border-color:" + c })), h("div", { class: "ws-ann", style: "color:" + c }, stack)), u.gap ? h("div", { class: "ws-gap" }, "…") : null];
+        });
+        const outline = w.outline.length ? h("div", { class: "ws-outline" }, w.outline.map((r) => h("div", { class: "ws-orow", style: `margin-left:${r.level * 28}px` },
+          r.level ? h("span", { class: "ws-elbow" }, "└") : null,
+          h("span", { class: "ws-ph" }, r.units.map((n) => { const u = w.units[n]; return e2g ? (u.cue || "") + " = " + u.greek : u.greek; }).join(e2g ? " · " : " ")),
+          r.role ? h("span", { class: "ws-role" }, r.role) : null))) : null;
+        return h("div", { class: "ws-sent" },
+          h("div", { class: "ws-num" }, `${i + 1}. `, s.ref || "", s.chapter != null ? h("span", { class: "ws-ch" }, " · Chapter " + s.chapter) : null, e2g ? h("span", { class: "ws-ch" }, " · English → Greek") : null),
+          e2g ? h("div", { class: "ws-prompt" }, w.prompt) : h("div", { class: "ws-greek" }, E.sentenceText(s, true)),
+          h("div", { class: "ws-words" }, words),
+          outline ? h("div", { class: "ws-label" }, "Skeleton") : null, outline,
+          h("div", { class: "ws-label" }, e2g ? "Greek" : "Translation"),
+          h("div", { class: "ws-final" + (e2g ? " gk" : "") }, w.text || "—"));
+      }));
+    return sheet;
+  }
+  function showWork(keys, onClose, title) {
+    const close = () => { closeModal(); if (onClose) onClose(); };
+    openModal(() => h("div", { class: sheetClass() + " ws-modal" },
+      h("div", { class: "body stack" },
+        h("div", { class: "row wrap" }, h("div", { style: "font-size:20px;font-weight:700" }, "Your work"), h("span", { class: "spacer" }),
+          h("input", { type: "text", placeholder: "Your name (shows on the page)", value: S().tStudentName || "", style: "width:240px", onchange: (e) => { O.set("tStudentName", e.target.value.trim()); render(); } })),
+        h("div", { class: "ws-paper" }, workSheet(keys, title))),
+      h("div", { class: "foot" },
+        h("span", { class: "muted small", style: "margin-right:auto" }, "In the print window, choose “Save as PDF” to download it."),
+        h("button", { class: "btn", onclick: close }, "Close"),
+        h("button", { class: "btn pri", onclick: () => printWork(keys, title) }, "⬇ Download PDF"))), !onClose);
+  }
+  function printWork(keys, title) {
+    let root = document.getElementById("t-print");
+    if (!root) { root = document.createElement("div"); root.id = "t-print"; document.body.append(root); }
+    root.replaceChildren(workSheet(keys, title));
+    document.body.classList.add("t-printing");
+    const done = () => { document.body.classList.remove("t-printing"); root.replaceChildren(); window.removeEventListener("afterprint", done); };
+    window.addEventListener("afterprint", done);
+    setTimeout(() => window.print(), 60);
   }
 
   // Enter = check on the parse screen when nothing else has focus.
