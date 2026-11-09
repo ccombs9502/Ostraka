@@ -482,3 +482,8 @@ canvas.draw { width: 100%; aspect-ratio: 1.6; background: var(--card); border-ra
 .t-done .body > *:not(.t-shards) { position: relative; z-index: 1; }
 .t-done .body > div[style*="font-size:25px"] { text-shadow: 0 0 6px var(--card), 0 0 12px var(--card); }
 .t-done .t-redtag { background: color-mix(in srgb, var(--bad) 14%, var(--card)); }
+/* Type a sentence: the box and the result wrap onto more lines */
+.t-type-in { resize: none; overflow: hidden; line-height: 1.4; min-height: 54px; white-space: pre-wrap; overflow-wrap: anywhere; display: block; }
+.t-type-res { white-space: normal; overflow-wrap: anywhere; }
+.t-tw { display: inline-block; }
+.t-tgloss { font-family: var(--notes); font-size: .5em; color: var(--muted); font-style: italic; vertical-align: middle; }

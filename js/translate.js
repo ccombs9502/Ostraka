@@ -341,8 +341,19 @@
     if (!E.ready && !waitGNT()) return loadingNote();
     const box = h("div", { class: "t-type-out" });
     const paint = () => box.replaceChildren(typePreview());
-    const input = greekIn({ value: Y.text, placeholder: "Type here: kai egw autos anqrwpos eimi", autofocus: true, oninput: (v) => { Y.text = v; Y.picks = {}; paint(); } });
-    input.classList.add("t-type-in");
+    // A box that grows and wraps. Greek letters everywhere except inside
+    // ( ), so a gloss like (everyone) or a reference like (Matt 7:26) stays English.
+    const input = h("textarea", { class: "t-in gk t-type-in", rows: "1", placeholder: "Type here: kai egw autos anqrwpos eimi", autocomplete: "off", spellcheck: "false", autocapitalize: "off", "data-autofocus": "" });
+    input.value = Y.text;
+    const grow = () => { input.style.height = "auto"; input.style.height = input.scrollHeight + 2 + "px"; };
+    input.addEventListener("input", () => {
+      const pos = input.selectionStart, before = input.value.length;
+      const g = toGreekOutsideParens(input.value);
+      if (g !== input.value) { input.value = g; const p2 = pos + (g.length - before); input.setSelectionRange(p2, p2); }
+      Y.text = input.value; Y.picks = {}; grow(); paint();
+    });
+    input.addEventListener("keydown", (e) => { if (e.key === "Enter") e.preventDefault(); });
+    requestAnimationFrame(grow);
     paint();
     return [
       h("div", { class: "card pad stack" },
@@ -353,10 +364,25 @@
         box),
     ];
   }
+  function toGreekOutsideParens(v) {
+    return v.split(/(\([^()]*\)?)/).map((seg) => (seg.startsWith("(") ? seg : O.toGreek(seg))).join("");
+  }
+  // Pull out "(gloss)" after a word and a "(Matt 7:26)" reference at the end,
+  // the same way the teacher's sentences are written for Import.
   function typedResult() {
     const Y = tr.type;
-    const r = E.restoreSentence(Y.text);
-    r.words.forEach((w, i) => { if (Y.picks[i]) { w.text = Y.picks[i]; w.segs = E.addedMarks(w.typed, w.text); } });
+    let text = Y.text, myRef = null;
+    const rm = text.match(/\(([^()]*\d+\s*:\s*\d+[^()]*)\)[\s.]*$/);
+    if (rm && E.parseRef(rm[1])) { myRef = E.parseRef(rm[1]); text = text.slice(0, rm.index); }
+    const glosses = {};
+    text = text.replace(/\(([^()]*)\)?/g, (m, g, off) => {
+      const words = (text.slice(0, off).match(/\S*\p{L}\S*/gu) || []).length;
+      if (words && (g || "").trim()) glosses[words - 1] = g.trim();
+      return " ";
+    });
+    const r = E.restoreSentence(text);
+    r.words.forEach((w, i) => { if (Y.picks[i]) { w.text = Y.picks[i]; w.segs = E.addedMarks(w.typed, w.text); } if (glosses[i]) w.gloss = glosses[i]; });
+    if (!r.ref && myRef) r.myRef = myRef;
     return r;
   }
   function typePreview() {
@@ -366,9 +392,10 @@
     if (!r.words.length) return h("div", { class: "muted" }, "Type Greek letters to start.");
     const unknown = r.words.filter((w) => !w.known);
     const amb = r.words.map((w, i) => [w, i]).filter(([w]) => w.alts && w.alts.length > 1);
-    const text = r.words.map((w) => w.text + w.post).join(" ");
+    const text = r.words.map((w) => w.text + (w.gloss ? ` (${w.gloss})` : "") + w.post).join(" ");
+    const refLabel = r.ref ? r.ref.label : r.myRef ? r.myRef.label : "";
     const save = (thenStart) => {
-      const s = E.parseOne(text + (r.ref ? ` (${r.ref.label})` : ""), null);
+      const s = E.parseOne(text + (refLabel ? ` (${refLabel})` : ""), null);
       if (!s) return;
       const added = T.addSentences([s], false, "");
       const rec = added[0] || O.data.sentences.find((x) => O.fold(sentenceGreek(x)) === O.fold(sentenceGreek(s)));
@@ -381,7 +408,8 @@
         class: "t-tw" + (w.alts && w.alts.length > 1 ? " amb" : "") + (w.known ? "" : " unk"),
         title: !w.known ? "Not found in the New Testament. Check this word yourself." : w.alts && w.alts.length > 1 ? "Tap to choose a different spelling" : null,
         onclick: w.alts && w.alts.length > 1 ? () => { const cur = w.alts.indexOf(E.restoreWord(w.typed).text === w.text ? w.alts[0] : w.text.normalize("NFD").replace(/̀/g, "́").normalize("NFC")); tr.type.picks[i] = w.alts[(cur + 1) % w.alts.length]; const b = document.querySelector(".t-type-out"); if (b) b.replaceChildren(typePreview()); } : null,
-      }, w.segs.map((sg) => sg.add ? h("span", { class: "t-add" }, sg.t) : sg.t), w.post))),
+      }, w.segs.map((sg) => sg.add ? h("span", { class: "t-add" }, sg.t) : sg.t), w.gloss ? h("span", { class: "t-tgloss" }, " (" + w.gloss + ")") : null, w.post)),
+        refLabel && !r.ref ? h("span", { class: "t-tgloss" }, "(" + refLabel + ")") : null),
       r.ref ? h("div", { class: "t-found" }, h("span", { class: "t-ok" }, "✓"), h("div", null, h("b", null, "Found in the New Testament: " + r.ref.label + "."), " Ostraka can check your parsing for every word in this sentence.")) : null,
       amb.length ? h("div", { class: "note" }, h("b", null, "Some words could be more than one thing. "), "They have a dotted line. Ostraka picked the most likely one; tap a word to switch: ",
         amb.map(([w]) => h("span", { class: "greek", style: "margin-right:10px" }, w.alts.join(" / ")))) : null,
@@ -465,7 +493,7 @@
       }
       if (step === "mean") {
         const gl = forms.length ? E.gloss(forms[0].lemma) : "";
-        mark("mean", !!(a.f.mean || "").trim() && (a.override || !gl || O.checkEnglish(a.f.mean, gl)));
+        mark("mean", !!(a.f.mean || "").trim() && (a.override || !gl || meanOk(a.f.mean, gl)));
       }
       if (step === "parse") {
         const fields = fieldsNow(u, a);
@@ -519,6 +547,12 @@
     const t = " " + text.toLowerCase().replace(/[’‘]/g, "'") + " ";
     if (/\b(of|from|than|about|by|whose|my|your|his|her|its|our|their|mine|yours)\b|'s\b|s'/.test(t)) return null;
     return `${u.greek} is genitive, so it usually reads “of …” (or “…'s”, or “my/his/their …”). If your English fits here anyway, press Check again to keep it.`;
+  }
+  // "and, even, also" counts when any of the meanings listed is right.
+  function meanOk(ans, gl) {
+    if (O.checkEnglish(ans, gl)) return true;
+    const parts = ans.split(/[,;\/]| or /).map((x) => x.trim()).filter(Boolean);
+    return parts.length > 1 && parts.some((x) => O.checkEnglish(x, gl));
   }
   function currentStep(u, a) { return stepsFor(u).find((st) => !a.ok[st]) || "ctx"; }
   function hintText(u, a, step, tier) {

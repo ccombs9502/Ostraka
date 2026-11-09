@@ -27,7 +27,23 @@
   <script>
     // Offline support only when served from a website (not file:// or the Windows app).
     if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")) {
-      navigator.serviceWorker.register("sw.js").catch(() => {});
+      const hadController = !!navigator.serviceWorker.controller;
+      navigator.serviceWorker.register("sw.js", { updateViaCache: "none" }).then((reg) => reg.update()).catch(() => {});
+      // A new version finished downloading: reload right away on the home
+      // screens, or offer a button if a sentence is in progress.
+      let reloaded = false;
+      navigator.serviceWorker.addEventListener("controllerchange", () => {
+        if (!hadController || reloaded) return;
+        const busy = (window.OT && window.OT.session) || document.querySelector(".session");
+        if (!busy) { reloaded = true; location.reload(); return; }
+        if (document.getElementById("upd")) return;
+        const b = document.createElement("button");
+        b.id = "upd"; b.className = "btn pri";
+        b.style.cssText = "position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:999;box-shadow:0 6px 20px rgba(0,0,0,.3)";
+        b.textContent = "Ostraka updated · Reload";
+        b.onclick = () => { reloaded = true; location.reload(); };
+        document.body.append(b);
+      });
     }
   </script>
 </body>
