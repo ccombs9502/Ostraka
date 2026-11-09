@@ -719,11 +719,8 @@
     const total = W.reduce((x, w) => x + w, 0) + F.gap * (W.length - 1);
     if (total <= F.width) return [W.map((w, n) => n)];
     const avail = F.width - 36; // room for the ▾ button
-    const best = pack(avail);
-    // Same number of lines, but evened out so the last line isn't one lonely word.
-    let lo = Math.max(...W), hi = avail;
-    while (hi - lo > 4) { const mid = (lo + hi) / 2; if (pack(mid).length <= best.length) hi = mid; else lo = mid; }
-    return pack(hi);
+    // Fill each line to the edge of the window before starting the next.
+    return pack(avail);
   }
   let refits = 0, refitTimer = null;
   function fitLines() {
