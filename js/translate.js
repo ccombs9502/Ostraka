@@ -79,7 +79,18 @@
     const added = [];
     list.forEach((s, i) => {
       const k = O.fold(sentenceGreek(s));
-      if (known.has(k)) return;
+      if (known.has(k)) {
+        // Same sentence again: keep the old one, but take any professor's
+        // glosses, reference or English the new copy adds.
+        const old = d.sentences.find((x) => O.fold(sentenceGreek(x)) === k);
+        if (old) {
+          const gNew = s.tokens.filter((t) => t.given).length, gOld = old.tokens.filter((t) => t.given).length;
+          if (gNew > gOld && s.tokens.length === old.tokens.length) old.tokens = s.tokens;
+          if (!old.ref && s.ref) { old.ref = s.ref; old.refKey = s.refKey || null; }
+          if (!old.english && s.english) old.english = s.english;
+        }
+        return;
+      }
       known.add(k);
       const rec = { id: O.uid("s"), chapter: s.chapter ?? null, tokens: s.tokens, ref: s.ref || "", refKey: s.refKey || null, english: s.english || "", created: now + i };
       d.sentences.push(rec); added.push(rec);
