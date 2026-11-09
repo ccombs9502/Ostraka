@@ -206,7 +206,7 @@
     const row = (s) => {
       const r = lastResult(s.id), r2 = lastResult(s.id, "e2g"), pinned = d.pinnedSentences.includes(s.id);
       const eng = s.english || (d.tNotes[s.id] || {}).english || "";
-      return h("div", { class: "li t-li" + (L.select && L.sel.includes(s.id) ? " pinned" : ""), onclick: () => L.select ? toggleSel(s.id) : T.start([s.id], S().tDir, s.ref || "Sentence") },
+      return h("div", { class: "li t-li" + (L.select && L.sel.includes(s.id) ? " pinned" : ""), onclick: () => L.select ? toggleSel(s.id) : askStart([s.id], s.ref || "Sentence") },
         L.select ? h("span", { class: "t-box" + (L.sel.includes(s.id) ? " on" : "") }, L.sel.includes(s.id) ? "✓" : "") : null,
         statusDot(r),
         h("div", { class: "t-li-main" },
@@ -215,7 +215,7 @@
         helpTag(r), (O.data.tWork[s.id + "|g2e"] || O.data.tWork[s.id + "|e2g"]) && !L.select ? h("button", { class: "btn link", onclick: (e) => { e.stopPropagation(); showWork(workKeys([s.id])); } }, "📄 Work") : null, r2 ? h("span", { class: "t-tag" + (usedHelp(r2) ? " red" : " ok") }, "Eng → Gk " + (usedHelp(r2) ? "•" : "✓")) : null,
         h("div", { class: "muted small t-li-meta" }, [s.ref, s.chapter != null ? "Ch. " + s.chapter : "", fmtDate(r && r.at)].filter(Boolean).join(" · ")),
         L.select ? null : h("button", { class: "icon-btn" + (pinned ? " on" : ""), title: pinned ? "Unpin" : "Pin", onclick: (e) => { e.stopPropagation(); togglePinSentence(s.id); } }, (() => { const p = icon("pin"); if (pinned) p.setAttribute("fill", "currentColor"); return p; })()),
-        L.select ? null : h("button", { class: "btn" + (usedHelp(r) ? " t-retry" : ""), onclick: (e) => { e.stopPropagation(); T.start([s.id], S().tDir, s.ref || "Sentence"); } }, usedHelp(r) ? "↺ Try again" : r ? "Again" : "Translate"));
+        L.select ? null : h("button", { class: "btn" + (usedHelp(r) ? " t-retry" : ""), onclick: (e) => { e.stopPropagation(); askStart([s.id], s.ref || "Sentence"); } }, usedHelp(r) ? "↺ Try again" : r ? "Again" : "Translate"));
     };
     const reds = T.scopeIds("red");
     return [
@@ -234,14 +234,14 @@
           h("option", { value: "all" }, "All chapters"), sentenceChapters().map((c) => h("option", { value: String(c), selected: L.chapter === String(c) || null }, "Chapter " + c))),
         L.group.startsWith("g:") ? h("button", { class: "btn link", onclick: () => groupMenu(L.group.slice(2)) }, "Edit group") : null,
         h("span", { class: "spacer" }),
-        reds.length ? h("button", { class: "btn pri", onclick: () => T.start(reds, S().tDir, "Used help") }, "↺ Retry all red · " + reds.length) : null),
+        reds.length ? h("button", { class: "btn pri", onclick: () => askStart(reds, "Used help") }, "↺ Retry all red · " + reds.length) : null),
       list.length ? h("div", { class: "list" }, list.map(row)) : h("div", { class: "muted center", style: "padding:30px" }, "Nothing matches."),
       L.select ? h("div", { class: "t-selbar" },
         h("b", null, selCount + " selected"),
         h("select", { disabled: !selCount || null, onchange: (e) => { const v = e.target.value; e.target.value = ""; if (v === "new") groupEditor(null, L.sel.slice()); else if (v) { const g = d.sentenceGroups.find((x) => x.id === v); L.sel.forEach((id) => { if (!g.ids.includes(id)) g.ids.push(id); }); O.save(); render(); } } },
           h("option", { value: "" }, "+ Add to group…"), d.sentenceGroups.map((g) => h("option", { value: g.id }, g.name)), h("option", { value: "new" }, "New group…")),
         h("button", { class: "btn", disabled: !selCount || null, onclick: () => { L.sel.forEach((id) => { if (!d.pinnedSentences.includes(id)) d.pinnedSentences.push(id); }); O.save(); render(); } }, "📌 Pin"),
-        h("button", { class: "btn", disabled: !selCount || null, onclick: () => T.start(L.sel.slice(), S().tDir, "Selected sentences") }, "Practice these"),
+        h("button", { class: "btn", disabled: !selCount || null, onclick: () => askStart(L.sel.slice(), "Selected sentences") }, "Practice these"),
         h("button", { class: "btn", disabled: !selCount || null, onclick: () => { const k = workKeys(L.sel); if (k.length) showWork(k); else alert("None of these sentences have been translated yet."); } }, "📄 Show work"),
         h("button", { class: "btn red", disabled: !selCount || null, onclick: () => { if (confirm(`Delete ${selCount} sentence${selCount === 1 ? "" : "s"}?`)) { deleteSentences(L.sel); L.sel = []; render(); } } }, "Delete")) : null,
     ];
@@ -255,6 +255,24 @@
     ids.forEach((id) => { delete d.tNotes[id]; delete d.tResults[id + "|g2e"]; delete d.tResults[id + "|e2g"]; });
     O.save();
   }
+  // From the Library: ask which way to translate before starting.
+  function askStart(ids, title) {
+    if (!ids.length) return;
+    const one = ids.length === 1;
+    const status = (dir) => {
+      if (!one) return null;
+      const r = lastResult(ids[0], dir);
+      return h("span", { class: "muted small" }, !r ? "Not done yet" : usedHelp(r) ? h("span", null, h("span", { class: "t-dot red" }), " Done with help") : "✓ Done");
+    };
+    const pick = (dir) => { O.set("tDir", dir); closeModal(); T.start(ids, dir, title); };
+    const choice = (dir, top, sub) => h("button", { class: "t-dirpick" + (S().tDir === dir ? " last" : ""), onclick: () => pick(dir) },
+      h("b", null, top), h("span", { class: "muted small" }, sub), status(dir));
+    openModal(() => h("div", { class: sheetClass(), style: "width:min(440px,100%)" }, h("div", { class: "body stack" },
+      h("div", { style: "font-size:20px;font-weight:700" }, "How do you want to translate " + (one ? "it" : "these " + ids.length) + "?"),
+      choice("g2e", "Greek → English", "Parse each Greek word, build the skeleton, write the English."),
+      choice("e2g", "English → Greek", "Build each Greek word from the English, then write the Greek sentence."),
+      h("button", { class: "btn link", onclick: closeModal }, "Cancel"))));
+  }
   function groupMenu(gid) {
     const d = O.data, g = d.sentenceGroups.find((x) => x.id === gid);
     if (!g) return;
@@ -262,7 +280,7 @@
       h("div", { style: "font-size:20px;font-weight:700" }, g.name),
       h("button", { class: "btn", onclick: () => { closeModal(); groupEditor(g); } }, "Edit group"),
       h("button", { class: "btn", onclick: () => { const l = d.pinnedSentenceGroups, i = l.indexOf(gid); if (i >= 0) l.splice(i, 1); else l.push(gid); O.save(); closeModal(); } }, d.pinnedSentenceGroups.includes(gid) ? "Unpin group" : "📌 Pin group"),
-      h("button", { class: "btn", onclick: () => { closeModal(); T.start(T.scopeIds("g:" + gid), S().tDir, g.name); } }, "Practice this group"),
+      h("button", { class: "btn", onclick: () => { closeModal(); askStart(T.scopeIds("g:" + gid), g.name); } }, "Practice this group"),
       h("button", { class: "btn", onclick: () => { const k = workKeys(T.scopeIds("g:" + gid)); if (k.length) showWork(k, null, g.name); else alert("No sentences in this group have been translated yet."); } }, "📄 Show work for this group"),
       h("button", { class: "btn red", onclick: () => { if (confirm(`Delete the group "${g.name}"? The sentences stay in your Library.`)) { d.sentenceGroups = d.sentenceGroups.filter((x) => x.id !== gid); if (tr.lib.group === "g:" + gid) tr.lib.group = "all"; O.save(); closeModal(); } } }, "Delete group"),
       h("button", { class: "btn link", onclick: closeModal }, "Close"))));
@@ -474,7 +492,18 @@
   // Which steps a unit has, in order.
   function stepsFor(u) {
     if (T.session.dir === "e2g") return ["kind", "lex", "parse", "form"];
-    return ["kind", "lex", "mean", "parse", "ctx"];
+    return noLex(u) ? ["kind", "mean", "parse", "ctx"] : ["kind", "lex", "mean", "parse", "ctx"];
+  }
+  // Words that never change form (οὖν, καί, ἐν, οὐ…) are already their own
+  // dictionary form, so there's no lexical-form question for them.
+  function noParse(u) {
+    const forms = unitForms(u);
+    return forms.length > 0 && forms.every((f) => ["Conjunction", "Adverb", "Particle"].includes(E.posName(f.pos)));
+  }
+  function noLex(u) {
+    if (T.session.dir === "e2g" || u.given) return false;
+    const forms = unitForms(u);
+    return forms.length > 0 && forms.every((f) => ["Conjunction", "Preposition", "Adverb", "Particle"].includes(E.posName(f.pos)) && E.fw(f.lemma) === E.fw(u.greek));
   }
   function fieldsNow(u, a) {
     const kind = a.f.kind || unitKind(u);
@@ -927,7 +956,7 @@
       h("div", { class: "t-k" }, okMark(k), label),
       h("button", { class: "t-cval" + (valueClass ? " " + valueClass : ""), style: "color:" + c, onclick: () => { a.open[k] = true; delete a.closed[k]; render(); } }, value, h("span", { class: "t-edit" }, "✎")));
     const isCompact = (k, filled, needsClose) => filled && !a.open[k] && a.ok[k] !== false && (!needsClose || a.closed[k]);
-    const order = e2g ? ["lex", "form"] : ["lex", "mean", "ctx"];
+    const order = e2g ? ["lex", "form"] : noLex(u) ? ["mean", "ctx"] : ["lex", "mean", "ctx"];
     const focusNext = (from) => {
       const later = order.slice(order.indexOf(from) + 1).find((k) => !(a.f[k] || "").trim());
       if (later) { a.open[later] = true; render(); return; }
@@ -947,7 +976,8 @@
 
     // Lexical form
     const lexLabel = e2g ? "Greek word" : "Lexical form";
-    if (isCompact("lex", (a.f.lex || "").trim(), true)) rows.push(compactRow("lex", lexLabel, a.f.lex, "gk"));
+    if (noLex(u)) { /* no lexical-form box */ }
+    else if (isCompact("lex", (a.f.lex || "").trim(), true)) rows.push(compactRow("lex", lexLabel, a.f.lex, "gk"));
     else rows.push(row("lex", lexLabel, greekIn({ value: a.f.lex || "", placeholder: "dictionary form", autofocus: af("lex") || a.open.lex, oninput: (v) => { a.f.lex = v; delete a.ok.lex; refreshLive(); }, onenter: enterText("lex") }),
       h("span", { class: "muted small" }, "the form you'd look up")));
 
@@ -972,10 +1002,11 @@
           onclick: () => { a.f[fl] = o[0]; delete a.ok[k]; delete a.ok.parse; delete a.open[k]; render(); },
         }, labelsFull() ? o[1] : o[2]))));
     };
-    rows.push(row("parse", e2g ? "What it needs to be" : "Parse",
-      !a.f.kind ? h("span", { class: "muted small" }, "Choose what it is first.") :
-        !fields.length ? h("span", { class: "muted small" }, a.f.kind + "s have nothing to parse.") :
-          h("div", { class: "t-fields" }, fields.map(fieldBox))));
+    // Only show the parsing box when this kind of word has something to parse
+    // (no box at all for words like οὖν, καί, οὐ).
+    if (a.f.kind ? fields.length : !noParse(u))
+      rows.push(row("parse", e2g ? "What it needs to be" : "Parse",
+        !a.f.kind ? h("span", { class: "muted small" }, "Choose what it is first.") : h("div", { class: "t-fields" }, fields.map(fieldBox))));
 
     // In this sentence / write the form
     if (!e2g) {

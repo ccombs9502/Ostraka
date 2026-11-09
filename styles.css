@@ -487,3 +487,7 @@ canvas.draw { width: 100%; aspect-ratio: 1.6; background: var(--card); border-ra
 .t-type-res { white-space: normal; overflow-wrap: anywhere; }
 .t-tw { display: inline-block; }
 .t-tgloss { font-family: var(--notes); font-size: .5em; color: var(--muted); font-style: italic; vertical-align: middle; }
+.t-dirpick { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; text-align: left; padding: 14px 16px; border-radius: 14px; border: 1px solid var(--line); background: var(--card); color: inherit; font: inherit; cursor: pointer; }
+.t-dirpick b { font-size: 17px; }
+.t-dirpick:hover, .t-dirpick.last { border-color: var(--accent); }
+.t-dirpick.last { box-shadow: 0 0 0 1px var(--accent); }
