@@ -539,8 +539,9 @@
     const g = (E.gloss(f.lemma) || "").split(/[,;(]/)[0].trim().replace(/^I /, "");
     return (u.article ? "the " : "") + (g || f.lemma);
   };
-  // Parsing labels: "letters" (PAI1P, the default), "short" (Pres, Act…) or "full".
-  const labelMode = () => S().tLabels || "letters";
+  // Parsing labels: "full" (default), "short" (Pres, Act…) or "letters" (PAI1P).
+  // Show work always uses letters; parsing uses the label switch (full words by default).
+  const labelMode = () => S().tLabels || (S().tLabelsFull === false ? "short" : "full");
   const labelsFull = () => { const m = labelMode(); return m === "full" ? true : m === "letters" ? "letters" : false; };
 
   // Which steps a unit has, in order.
