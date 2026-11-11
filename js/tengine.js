@@ -218,6 +218,24 @@
     return val === want;
   };
   // "Present, Active, Indicative, 2nd Singular"
+  // Turn a saved label ("Fut, Act, Ind, 3rd Pl", "Prep + Gen", "Gen / Nom, Sg")
+  // into letters ("FAI3P", "Prep +G", "G/NS").
+  E.toLetters = (label) => {
+    if (!label) return label;
+    const map = {};
+    Object.entries(E.FIELDS).forEach(([f, def]) => { if (/2$/.test(f)) return; def.opts.forEach((o) => { const L = E.optLabel(f, o[0], "letters"); map[o[1].toLowerCase()] = L; map[o[2].toLowerCase()] = L; }); });
+    map["sg"] = "S"; map["pl"] = "P";
+    let prep = "";
+    let rest = label.trim();
+    if (/^prep\b/i.test(rest)) { prep = "Prep "; rest = rest.replace(/^prep\s*/i, ""); }
+    const out = rest.split(/\s*,\s*|\s+(?=[^\s\/+])/).map((tok) => {
+      if (!tok) return "";
+      if (tok.includes("/")) return tok.split(/\s*\/\s*/).map((x) => map[x.toLowerCase()] || x).join("/");
+      if (tok.startsWith("+")) return "+" + (map[tok.slice(1).trim().toLowerCase()] || tok.slice(1).trim());
+      return map[tok.toLowerCase()] ?? tok;
+    }).join("");
+    return prep + out.replace(/\+\s+/g, "+");
+  };
   E.parseLabel = (fields, get, full) => {
     if (full === "letters") {
       // Run together: PAI1P, NSM, A/NPN, +D.

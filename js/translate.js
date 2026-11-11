@@ -540,7 +540,7 @@
     return (u.article ? "the " : "") + (g || f.lemma);
   };
   // Parsing labels: "letters" (PAI1P, the default), "short" (Pres, Act…) or "full".
-  const labelMode = () => S().tLabels || (S().tLabelsFull === false ? "short" : "letters");
+  const labelMode = () => S().tLabels || "letters";
   const labelsFull = () => { const m = labelMode(); return m === "full" ? true : m === "letters" ? "letters" : false; };
 
   // Which steps a unit has, in order.
@@ -1702,7 +1702,7 @@
           const stack = [];
           if (u.lex) stack.push(h("div", { class: "ws-lex" }, "(" + u.lex + ")"));
           if (u.mean) stack.push(h("div", { class: "ws-gl" }, "“" + u.mean + "”"));
-          stack.push(h("div", { class: "ws-hr", style: "background:" + c }), h("div", { class: "ws-ps" }, u.parse ? u.parse : u.kind));
+          stack.push(h("div", { class: "ws-hr", style: "background:" + c }), h("div", { class: "ws-ps" }, u.parse ? E.toLetters(u.parse) : u.kind));
           stack.push(h("div", { html: waveSvg(c) }), h("div", { class: "ws-ctx" + (e2g ? " gk" : "") }, e2g ? u.greek : u.ctx));
           return [h("div", { class: "ws-w" }, h("div", { class: "ws-wd" }, h("div", { class: e2g ? "ws-en" : "ws-gk" }, top), h("div", { class: "ws-br", style: "border-color:" + c })), h("div", { class: "ws-ann", style: "color:" + c }, stack)), u.gap ? h("div", { class: "ws-gap" }, "…") : null];
         });
@@ -1715,7 +1715,7 @@
           e2g ? h("div", { class: "ws-prompt" }, w.prompt) : h("div", { class: "ws-greek" }, E.sentenceText(s, true)),
           h("div", { class: "ws-words" }, words),
           h("div", { class: "ws-label" }, e2g ? "Greek" : "Translation"),
-          h("div", { class: "ws-final" + (e2g ? " gk" : "") }, w.text || "—"));
+          h("div", { class: "ws-final" + (e2g ? " gk" : "") }, w.text ? (e2g ? w.text : "“" + w.text.replace(/^["“”]+|["“”]+$/g, "") + "”") : "—"));
       }));
     return sheet;
   }
