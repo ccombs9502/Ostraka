@@ -176,7 +176,7 @@
           toggle(s.tLinkArticles, "Link articles automatically", (v) => { O.set("tLinkArticles", v); render(); }, "Good for beginners: each article comes joined to its noun."),
           toggle(s.tShowStructure, "Show structure", (v) => { O.set("tShowStructure", v); render(); }, "Starts the skeleton already filled in. Counts as help."),
           toggle(s.tSkelAdvanced, "Advanced skeleton", (v) => { O.set("tSkelAdvanced", v); render(); }, "Build an indented outline and name each phrase (verb, subject, object…) instead of just putting the words in order."),
-          h("div", { class: "row wrap" }, h("span", null, "Labels"), seg([["full", "Full words"], ["short", "Short"]], s.tLabelsFull ? "full" : "short", (v) => { O.set("tLabelsFull", v === "full"); render(); }),
+          h("div", { class: "row wrap" }, h("span", null, "Labels"), seg([["letters", "PAI1P"], ["short", "Short"], ["full", "Full words"]], labelMode(), (v) => { O.set("tLabels", v); render(); }),
             h("span", { style: "margin-left:12px" }, "Notes"), seg([["folded", "Folded"], ["full", "Full"]], s.tNotesFull ? "full" : "folded", (v) => { O.set("tNotesFull", v === "full"); render(); })))),
     ];
   }
@@ -539,7 +539,9 @@
     const g = (E.gloss(f.lemma) || "").split(/[,;(]/)[0].trim().replace(/^I /, "");
     return (u.article ? "the " : "") + (g || f.lemma);
   };
-  const labelsFull = () => S().tLabelsFull;
+  // Parsing labels: "letters" (PAI1P, the default), "short" (Pres, Act…) or "full".
+  const labelMode = () => S().tLabels || (S().tLabelsFull === false ? "short" : "letters");
+  const labelsFull = () => { const m = labelMode(); return m === "full" ? true : m === "letters" ? "letters" : false; };
 
   // Which steps a unit has, in order.
   function stepsFor(u) {
@@ -798,7 +800,7 @@
     return h("div", { class: "t-pop t-set" + ap("tset", "1") },
       h("div", { class: "row" }, h("b", null, "View"), h("span", { class: "spacer" }), h("button", { class: "icon-btn", onclick: () => { ss.settingsOpen = false; render(); } }, icon("x"))),
       h("div", { class: "t-set-row" }, h("span", null, "Notes"), seg([["folded", "Folded"], ["full", "Full"]], S().tNotesFull ? "full" : "folded", (v) => { O.set("tNotesFull", v === "full"); Object.keys(ss.lines).forEach((k) => { if (ss.lines[k] === "open") delete ss.lines[k]; }); render(); })),
-      h("div", { class: "t-set-row" }, h("span", null, "Labels"), seg([["full", "Full words"], ["short", "Short"]], labelsFull() ? "full" : "short", (v) => { O.set("tLabelsFull", v === "full"); render(); })),
+      h("div", { class: "t-set-row" }, h("span", null, "Labels"), seg([["letters", "PAI1P"], ["short", "Short"], ["full", "Full words"]], labelMode(), (v) => { O.set("tLabels", v); render(); })),
       lines.length > 1 ? (() => {
         const closedNow = lines.some((l, i) => ss.lines[i] === "closed" || (ss.lines[i] !== "open" && lineDone(l) && i !== curLine));
         return h("div", { class: "t-set-row" }, h("span", null, "Lines"),
@@ -941,10 +943,11 @@
       if (a.f.kind === "Preposition") bits.push(h("span", { class: a.ok.kind === false ? "wrong" : "" }, "Prep "));
       fields.forEach((fl, i) => {
         const v = a.f[fl];
-        const lab = v ? (fl === "takes" ? "+ " : "") + E.optLabel(fl, v, labelsFull()) : "___";
+        const lab = v ? (fl === "takes" ? (labelMode() === "letters" ? "+" : "+ ") : "") + E.optLabel(fl, v, labelsFull()) : (labelMode() === "letters" ? "_" : "___");
         const joinPN = fl === "number" && fields[i - 1] === "person";
         const two = fl === "case2" || fl === "gender2";
-        if (i) bits.push(joinPN ? " " : two ? " / " : ", ");
+        const L = labelMode() === "letters";
+        if (i) bits.push(L ? (two ? "/" : "") : joinPN ? " " : two ? " / " : ", ");
         bits.push(h("span", { class: (a.ok["p:" + fl] === false ? "wrong" : a.ok["p:" + fl] ? "" : "pend") + (two ? " t-c2" : "") }, lab));
       });
       parts.push(h("div", { class: "t-hr", style: "background:" + c }), h("div", { class: "t-ps" }, bits));
@@ -1133,7 +1136,7 @@
         h("div", { class: "chips" }, E.FIELDS[fl].opts.filter((o) => !((fl === "case" || fl === "case2") && o[0] === "V" && a.f.kind !== "Noun")).map((o) => h("button", {
           class: "chip t-chip" + (v === o[0] ? " sel" : "") + (a.ok[k] === false && v === o[0] ? " wrong" : ""), style: v === o[0] ? "color:" + c : "",
           onclick: () => { a.f[fl] = o[0]; delete a.ok[k]; delete a.ok.parse; delete a.open[k]; render(); },
-        }, labelsFull() ? o[1] : o[2]))));
+        }, labelMode() === "full" ? o[1] : o[2]))));
     };
     // Only show the parsing box when this kind of word has something to parse
     // (no box at all for words like οὖν, καί, οὐ).
@@ -1711,7 +1714,6 @@
           h("div", { class: "ws-num" }, `${i + 1}. `, s.ref || "", s.chapter != null ? h("span", { class: "ws-ch" }, " · Chapter " + s.chapter) : null, e2g ? h("span", { class: "ws-ch" }, " · English → Greek") : null),
           e2g ? h("div", { class: "ws-prompt" }, w.prompt) : h("div", { class: "ws-greek" }, E.sentenceText(s, true)),
           h("div", { class: "ws-words" }, words),
-          outline ? h("div", { class: "ws-label" }, "Skeleton") : null, outline,
           h("div", { class: "ws-label" }, e2g ? "Greek" : "Translation"),
           h("div", { class: "ws-final" + (e2g ? " gk" : "") }, w.text || "—"));
       }));

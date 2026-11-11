@@ -180,7 +180,16 @@
     if ("MN".includes(key.parse[6]) && "GD".includes(key.parse[4]) && (/^V/.test(key.pos) || /ο[σς]$/.test(fw(E.lemmas[key.lemmaIdx] || "")))) { set.add("M"); set.add("N"); }
     return [...set];
   };
-  E.optLabel = (field, code, full) => { const o = E.FIELDS[field].opts.find((x) => x[0] === code); return o ? (full ? o[1] : o[2]) : ""; };
+  // Letter codes (full = "letters"): tense P I F A R(perfect) L(pluperfect); voice A M P;
+  // mood I S O M(imperative) N(infinitive) P(participle); person 1 2 3; case N G D A V;
+  // number S P; gender M F N.
+  const LETTER = { tense: { X: "R", Y: "L" }, mood: { D: "M" } };
+  E.optLabel = (field, code, full) => {
+    const o = E.FIELDS[field].opts.find((x) => x[0] === code);
+    if (!o) return "";
+    if (full === "letters") { const base = field.replace(/2$/, ""); return (LETTER[base] && LETTER[base][code]) || code; }
+    return full ? o[1] : o[2];
+  };
 
   // Which fields to ask for. Verb fields follow the mood the user picked, so they give nothing away.
   E.fieldsFor = (kind, chosenMood, keyParse) => {
@@ -210,6 +219,10 @@
   };
   // "Present, Active, Indicative, 2nd Singular"
   E.parseLabel = (fields, get, full) => {
+    if (full === "letters") {
+      // Run together: PAI1P, NSM, A/NPN, +D.
+      return fields.map((f) => { const v = get(f); if (!v) return "_"; const l = E.optLabel(f, v, full); return f === "takes" ? "+" + l : f === "case2" || f === "gender2" ? "/" + l : l; }).join("");
+    }
     const parts = [];
     for (const f of fields) {
       const v = get(f);
