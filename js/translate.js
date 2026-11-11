@@ -19,7 +19,16 @@
     // groups). Sentences already in the Library just pick up his glosses.
     const P = window.OSTRAKA_PRACTICE;
     if (P && (d.settings.tPracticeVersion || 0) < P.version) {
-      try { T.addSentences(E.parseSentences(P.text), true); d.settings.tPracticeVersion = P.version; O.save(); } catch (e) { console.warn("practice preload", e); }
+      try {
+        const list = E.parseSentences(P.text), seen = {};
+        // Attach his answer to each sentence (same chapter, same order).
+        list.forEach((x) => {
+          const k = String(x.chapter), i = (seen[k] = (seen[k] || 0) + 1) - 1;
+          const a = P.answers && P.answers[k] && P.answers[k][i];
+          if (a) { x.english = a.en; x.englishAlts = a.alts || []; x.answerNote = a.note || ""; x.answerBy = "Prof. Swygard"; }
+        });
+        T.addSentences(list, true); d.settings.tPracticeVersion = P.version; O.save();
+      } catch (e) { console.warn("practice preload", e); }
     }
   };
   const tr = { tab: "practice", scope: ["all"], lib: { filter: "all", chapter: "all", group: "all", q: "", select: false, sel: [] }, imp: { text: "", chapters: null, groupByChapter: true, addTo: "" }, type: { text: "", picks: {} } };
@@ -94,11 +103,13 @@
           if (gNew > gOld && s.tokens.length === old.tokens.length) old.tokens = s.tokens;
           if (!old.ref && s.ref) { old.ref = s.ref; old.refKey = s.refKey || null; }
           if (!old.english && s.english) old.english = s.english;
+          if (s.answerBy && !old.answerBy) { old.english = s.english; old.englishAlts = s.englishAlts || []; old.answerNote = s.answerNote || ""; old.answerBy = s.answerBy; }
         }
         return;
       }
       known.add(k);
       const rec = { id: O.uid("s"), chapter: s.chapter ?? null, tokens: s.tokens, ref: s.ref || "", refKey: s.refKey || null, english: s.english || "", created: now + i };
+      if (s.answerBy) { rec.englishAlts = s.englishAlts || []; rec.answerNote = s.answerNote || ""; rec.answerBy = s.answerBy; }
       d.sentences.push(rec); added.push(rec);
     });
     if (groupByChapter) {
@@ -1516,8 +1527,8 @@
         h("textarea", { class: "t-eng", placeholder: "Write the whole sentence in English", "data-autofocus": "", value: ss.english, oninput: (e) => { ss.english = e.target.value; ss.englishResult = null; },
           onkeydown: (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); e.stopPropagation(); checkEnglish(); } } }),
         res ? h("div", { class: "feedback " + (res.ok ? "ok" : "bad") },
-          h("div", { class: "v" }, res.ok ? "✓ Looks right" : ref ? "✕ Compare with this" : "Check it yourself"),
-          ref ? h("div", { style: "font-size:17px;margin-top:4px" }, ref) : h("div", { class: "muted small" }, "There's no answer to compare with, so check it against your word-by-word line."),
+          h("div", { class: "v" }, res.ok ? "✓ Looks right" : ref ? "✕ Compare with " + (ss.s.answerBy ? ss.s.answerBy + "'s answer" : "this") : "Check it yourself"),
+          ref ? answerBlock(ss.s) : h("div", { class: "muted small" }, "No answer key for this sentence. Compare with your word-by-word line, then mark it."),
           !res.ok ? h("div", { class: "row", style: "justify-content:center;margin-top:8px" },
             h("button", { class: "btn ok", onclick: () => finishSentence() }, ref ? "✓ I was right, count it" : "✓ It's right"),
             h("button", { class: "btn", onclick: () => { ss.englishResult = null; render(); } }, "Try again")) : null) : null,
@@ -1545,11 +1556,25 @@
       h("div", { class: "card pad stack" }, h("b", { style: "font-size:17px" }, e2g ? "3 · Your Greek" : "3 · Your English"), checkArea),
     ];
   }
+  // Every way the answer can be read: alternates ("Or …"), a/b choices
+  // ("leading/bringing"), and optional words in [ ] or ( ).
+  function answerVariants(s) {
+    const out = new Set();
+    [s.english, ...(s.englishAlts || [])].filter(Boolean).forEach((ref) => {
+      const base = ref.replace(/\([^()]*[Ͱ-Ͽἀ-῿][^()]*\)/g, " ").replace(/\((pl|sg|plural|singular)\)/gi, " ");
+      [true, false].forEach((keepOpt) => [0, 1].forEach((side) => {
+        let v = keepOpt ? base.replace(/[\[\]()]/g, "") : base.replace(/\[[^\]]*\]|\([^)]*\)/g, " ");
+        v = v.replace(/(\w+)\/(\w+)/g, (m, a, b) => (side ? b : a));
+        out.add(v.replace(/\s+/g, " ").trim());
+      }));
+    });
+    return [...out];
+  }
   function checkEnglish() {
     const ss = T.session;
     if (!ss.english.trim()) return;
     const ref = ss.s.english;
-    const ok = ref ? E.compareEnglish(ss.english, ref) >= 0.6 : false;
+    const ok = ref ? Math.max(...answerVariants(ss.s).map((v) => E.compareEnglish(ss.english, v))) >= 0.6 : false;
     ss.englishResult = { ok };
     if (ok) finishSentence(); else render();
   }
@@ -1601,6 +1626,12 @@
     for (;;) { const k = d.toISOString().slice(0, 10); if (!days.has(k)) break; n++; d.setDate(d.getDate() - 1); }
     return n;
   }
+  function answerBlock(s, small) {
+    return h("div", { class: "t-answer" + (small ? " sm" : "") },
+      h("div", { style: "font-size:" + (small ? 15 : 17) + "px;margin-top:4px" }, s.english),
+      (s.englishAlts || []).length ? h("div", { class: "small muted" }, "Also right: ", s.englishAlts.map((a, i) => [i ? " · " : "", "“" + a + "”"])) : null,
+      s.answerNote ? h("div", { class: "small muted", style: "font-style:italic" }, s.answerNote) : null);
+  }
   function completeSheet() {
     const ss = T.session, r = ss.result, s = ss.s, e2g = ss.dir === "e2g";
     const help = usedHelp(r);
@@ -1619,6 +1650,7 @@
         h("div", { style: "font-size:25px;font-weight:700;position:relative" }, "Sentence translated!"),
         h("div", { class: "greek", style: "font-size:23px;position:relative" }, sentenceGreek(s)),
         eng ? h("div", { style: "font-size:17px;position:relative" }, "“" + eng + "”") : null,
+        !e2g && s.answerBy && s.english ? h("div", { class: "t-answer-k", style: "position:relative" }, h("div", { class: "label", style: "margin:6px 0 0" }, s.answerBy + "'s answer"), answerBlock(s, true)) : null,
         h("div", { class: "t-stats" },
           [[`${r.units} / ${r.units}`, e2g ? "words built" : "words parsed"], [r.firstTry, "right first try"], [mm, "time"], ["🔥 " + streak(), "day streak"]].map(([a, b]) => h("div", null, h("b", null, a), h("span", null, b)))),
         h("div", { class: "row", style: "margin-top:6px" },

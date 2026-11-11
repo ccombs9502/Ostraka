@@ -540,3 +540,4 @@ button.t-st.go:hover { box-shadow: 0 0 0 1px var(--accent); }
 html.embed .side, html.embed .tabs { display: none !important; }
 html.embed .shell { height: 100vh; }
 html.embed .main { padding-bottom: 0; }
+.t-answer.sm { margin-top: 2px; } .t-answer-k .label { text-align: center; }
