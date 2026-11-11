@@ -59,6 +59,13 @@
       const person = L === "ἐγώ" ? "1" : L === "σύ" ? "2" : null;
       if (person) f[3] = person + f[3].slice(1);
     });
+    // How often each lemma is tagged as each kind across the NT (for kindsFor).
+    E.lemmaKinds = new Map();
+    G.forms.forEach((f) => {
+      const k = E.posName(f[2]);
+      if (!E.lemmaKinds.has(f[1])) E.lemmaKinds.set(f[1], {});
+      const m = E.lemmaKinds.get(f[1]); m[k] = (m[k] || 0) + f[4];
+    });
     E.byFold = new Map();
     G.forms.forEach((f, i) => { const k = fw(f[0]); if (!E.byFold.has(k)) E.byFold.set(k, []); E.byFold.get(k).push(i); });
     for (const list of E.byFold.values()) list.sort((a, b) => G.forms[b][4] - G.forms[a][4]);
@@ -96,6 +103,28 @@
   E.POS = { "N-": "Noun", "V-": "Verb", RA: "Article", RP: "Pronoun", RR: "Pronoun", RD: "Pronoun", RI: "Pronoun", "A-": "Adjective", "P-": "Preposition", "C-": "Conjunction", "D-": "Adverb", "X-": "Particle", "I-": "Particle" };
   E.KINDS = ["Verb", "Noun", "Article", "Pronoun", "Adjective", "Preposition", "Conjunction", "Adverb", "Particle"];
   E.posName = (pos) => E.POS[pos] || "Particle";
+  // Grammars don't all label every word the same way (MorphGNT calls some
+  // καί "adverbs", and αὐτός is a pronoun that also works like an adjective),
+  // so "What is it?" accepts every reasonable label for the word.
+  const ALSO = {
+    "αυτοσ": ["Pronoun", "Adjective"], "ουτοσ": ["Pronoun", "Adjective"], "εκεινοσ": ["Pronoun", "Adjective"],
+    "τισ": ["Pronoun", "Adjective"], "οστισ": ["Pronoun"], "οσ": ["Pronoun"],
+    "και": ["Conjunction", "Adverb"], "δε": ["Conjunction", "Particle"], "γαρ": ["Conjunction", "Particle"],
+    "ουν": ["Conjunction", "Particle"], "μεν": ["Conjunction", "Particle"], "τε": ["Conjunction", "Particle"],
+    "αρα": ["Conjunction", "Particle"], "γε": ["Particle"], "αν": ["Particle"],
+    "ου": ["Adverb", "Particle"], "ουχι": ["Adverb", "Particle"], "μη": ["Adverb", "Particle", "Conjunction"],
+    "αμην": ["Particle", "Adverb"], "ιδου": ["Particle", "Adverb"], "ναι": ["Particle", "Adverb"], "ουαι": ["Particle"],
+  };
+  E.kindsFor = (form) => {
+    const set = new Set([E.posName(form.pos)]);
+    const fold = fw(E.lemmas[form.lemmaIdx] || "").replace(/ς/g, "σ");
+    (ALSO[fold] || []).forEach((k) => set.add(k));
+    // Any other label this word gets in at least 10% of its NT uses.
+    const m = E.lemmaKinds && E.lemmaKinds.get(form.lemmaIdx);
+    if (m) { const tot = Object.values(m).reduce((x, y) => x + y, 0); Object.entries(m).forEach(([k, c]) => { if (c / tot >= 0.1) set.add(k); }); }
+    if (form.pos === "RD" || form.pos === "RI") set.add("Adjective");
+    return [...set];
+  };
   const NOMINAL = new Set(["N-", "RA", "RP", "RR", "RD", "RI", "A-"]);
 
   // Glosses: the user's own vocabulary first, then the public-domain Dodson lexicon.

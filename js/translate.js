@@ -514,8 +514,10 @@
     if (!forms.length) return false;
     // An article on its own (e.g. before a given noun) is always ὁ.
     if (!u.article && forms.every((f) => E.posName(f.pos) === "Article")) return true;
-    // Pronouns: no lexical-form question (Charlie's call, Web 12).
-    if (forms.every((f) => E.posName(f.pos) === "Pronoun")) return true;
+    // Pronouns: no lexical-form question (Charlie's call, Web 12). αὐτός, οὗτος
+    // and the like count too, even where the key calls them adjectives.
+    const a = T.session.ans[T.session.units.indexOf(u)];
+    if (forms.every((f) => E.posName(f.pos) === "Pronoun" || (E.kindsFor(f).includes("Pronoun") && (!a || !a.f.kind || a.f.kind === "Pronoun")))) return true;
     return forms.every((f) => ["Conjunction", "Preposition", "Adverb", "Particle"].includes(E.posName(f.pos)) && E.fw(f.lemma) === E.fw(u.greek));
   }
   function fieldsNow(u, a) {
@@ -555,7 +557,7 @@
     let allOk = true;
     const mark = (k, ok) => { a.ok[k] = !!ok; if (!ok) allOk = false; };
     for (const step of stepsFor(u)) {
-      if (step === "kind") mark("kind", !!a.f.kind && (noKey || forms.some((f) => E.posName(f.pos) === a.f.kind)));
+      if (step === "kind") mark("kind", !!a.f.kind && (noKey || forms.some((f) => E.kindsFor(f).includes(a.f.kind))));
       if (step === "lex") {
         // Accents and breathing marks don't matter, and an article in front
         // ("ἡ ἡμέρα") or a vocab-list tail ("ἡμέρα, -ας, ἡ") is fine too.
