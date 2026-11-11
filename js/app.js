@@ -103,15 +103,17 @@
   });
 
   // ---------- Shell ----------
-  const SECTIONS = [["home", "Home", "home"], ["vocab", "Vocabulary", "book"], ["translate", "Translate", "lang"], ["paradigms", "Paradigms", "grid"], ["add", "Add Words", "plus"], ["settings", "Settings", "gear"]];
+  const SECTIONS = [["home", "Home", "home"], ["vocab", "Vocabulary", "book"], ["translate", "Translate", "lang"], ["paradigms", "Paradigms", "grid"], ["settings", "Settings", "gear"]];
   function go(section, practice = false) { st.section = section; st.paradigmPractice = practice; st.pstack = []; render(); }
 
   function renderShell() {
     const navBtn = ([id, title, ic]) =>
-      h("button", { class: "nav" + (st.section === id ? " on" : ""), onclick: () => go(id) }, icon(ic), title);
-    const views = { home: viewHome, vocab: viewVocab, translate: () => window.OT.view(), paradigms: viewParadigms, add: viewAdd, settings: viewSettings };
+      h("button", { class: "nav" + (st.section === id || (id === "vocab" && st.section === "add") || (id === "home" && st.section === "chapters") ? " on" : ""), "aria-current": st.section === id ? "page" : null, onclick: () => go(id) }, icon(ic), title);
+    const views = { home: viewHome, chapters: viewChapters, vocab: viewVocab, translate: () => window.OT.view(), paradigms: viewParadigms, add: viewAdd, settings: viewSettings };
     const page = views[st.section]();
     if (!O.data.settings.hasSeenWelcome && !st.modal) setTimeout(() => openModal(welcomeSheet, false), 0);
+    // People who already use Ostraka get asked their name once, too.
+    else if (!O.embedded && !S.userName && !S.askedName && !st.modal && !st.askedThisVisit) { st.askedThisVisit = true; setTimeout(() => openModal(() => nameSheet(true), false), 0); }
     return h("div", { class: "shell" },
       h("nav", { class: "side" }, h("h6", null, "Ostraka"), SECTIONS.map(navBtn)),
       h("main", { class: "main" },
@@ -122,32 +124,129 @@
 
   // ---------- Home ----------
   function viewHome() {
-    const due = O.dueCards("all").length, fresh = O.newAvailable("all"), empty = !O.data.cards.length;
-    const choice = (title, ic, color, text, meta, label, pri, fn, disabled) =>
-      h("div", { class: "card choice" },
-        h("div", { class: "ic", style: "background:" + color }, icon(ic)),
-        h("h3", null, title), h("p", null, text), h("div", { class: "muted small" }, meta),
-        h("button", { class: "btn wide" + (pri ? " pri" : ""), onclick: fn, disabled }, label));
+    const d = O.data, n = O.currentChapter(), dir = S.tDir || "g2e";
+    const hour = new Date().getHours();
+    const hello = (hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening") + (S.userName ? ", " + S.userName : "");
+    const bar = (done, total) => h("div", { class: "hbar", role: "progressbar", "aria-valuemin": 0, "aria-valuemax": total, "aria-valuenow": done }, h("i", { style: `width:${total ? Math.round((done / total) * 100) : 0}%` }));
+    // Pick up where you left off.
+    const resume = continueInfo();
+    const hero = resume
+      ? h("div", { class: "card hero" },
+          h("div", { class: "label", style: "margin:0;color:var(--accent)" }, "Pick up where you left off"),
+          h("div", { class: "hero-t" }, resume.title),
+          bar(resume.done, resume.total),
+          h("div", { class: "row" }, h("span", { class: "muted small" }, resume.note), h("span", { class: "spacer" }),
+            h("button", { class: "btn pri big", onclick: resume.go, "data-autofocus": "" }, "Continue →")))
+      : !d.cards.length
+        ? h("div", { class: "card hero" },
+            h("div", { class: "label", style: "margin:0;color:var(--accent)" }, "Start here"),
+            h("div", { class: "hero-t" }, "Add your vocabulary"),
+            h("div", { class: "muted" }, "Paste your word list (Greek | English | chapter). Each chapter becomes its own group."),
+            h("div", { class: "row" }, (d.sentences || []).length ? h("button", { class: "btn link", onclick: () => go("translate") }, "Or practice translating sentences") : null,
+              h("span", { class: "spacer" }), h("button", { class: "btn pri big", onclick: () => go("add") }, "Add words →")))
+        : h("div", { class: "card hero" },
+            h("div", { class: "label", style: "margin:0;color:var(--accent)" }, "Start here"),
+            h("div", { class: "hero-t" }, n ? `Learn the Chapter ${n} words` : "Learn your words"),
+            h("div", { class: "row" }, h("span", { class: "muted small" }, "Keeps going until you know every word. Missed words come back sooner."), h("span", { class: "spacer" }),
+              h("button", { class: "btn pri big", onclick: () => startSession("study", n ? "c:" + n : "all") }, "Start →")));
+    // The chapter you're on, at a glance.
+    let tiles = null;
+    if (n) {
+      const v = O.vocabFor(n), pa = O.paradigmsFor(n), t = O.sentencesFor(n, dir);
+      const tile = (label, done, total, unit, action, fn) => h("button", { class: "card tile", onclick: fn, disabled: !total || null },
+        h("span", { class: "label", style: "margin:0" }, label),
+        h("span", { class: "tile-n" }, total ? done : "–", h("small", null, total ? ` of ${total} ${unit}` : ` no ${unit} yet`)),
+        bar(done, total), h("span", { class: "tile-go" }, total ? (done >= total ? "Review →" : done ? action + " →" : "Start →") : ""));
+      tiles = [
+        h("div", { class: "row", style: "margin-top:6px" }, h("b", { style: "font-size:17px" }, "Chapter " + n), h("span", { class: "spacer" }),
+          h("button", { class: "btn link", onclick: () => go("chapters") }, "See all chapters →")),
+        h("div", { class: "tiles" },
+          tile("Vocabulary", v.known, v.total, "words", "Keep learning", () => { st.vocabScope = "c:" + n; st.vocabKind = "study"; go("vocab"); }),
+          tile("Paradigms", pa.done, pa.total, pa.total === 1 ? "chart" : "charts", "Keep going", () => practiceParadigms(pa.ids, n)),
+          tile("Translate", t.done, t.total, "sentences", "Continue", () => startTranslate(t.ids, n, dir))),
+      ];
+    }
     return {
       title: "Home",
-      body: h("div", { class: "stack" },
-        h("div", { class: "row" }, h("img", { src: "icon.png", class: "logo", alt: "" }),
-          h("div", null, h("div", { style: "font-size:28px;font-weight:700" }, "Welcome to Ostraka!"),
-            h("div", { class: "muted" }, "Pick one way to study below. If you're not sure, start with a Study Session."))),
-        h("div", { class: "card stats" },
-          h("div", null, h("b", null, due), h("span", null, "Due today")),
-          h("div", null, h("b", null, fresh), h("span", null, "New today")),
-          h("div", null, h("b", null, O.knownCount("all")), h("span", null, "Known"))),
-        h("div", { class: "choices" },
-          choice("Study Session", "target", "var(--accent)", "Work through every word in a group until you've mastered it. Missed words come back more often.", "Flashcards · Type · Multiple choice · English → Greek · Draw · Board", "Start studying", true, () => openSetup("study"), empty),
-          choice("Daily Review", "cal", "var(--olive)", "A few minutes a day. Words you know rest for days, then come back right before you'd forget them.", due + fresh ? `${due + fresh} words waiting today` : "All caught up today", "Review today", false, () => openSetup("daily"), empty),
-          choice("Cram", "bolt", "var(--gold)", "Race through a group as fast as you can. Great right before a quiz. Doesn't change your schedule.", "Flashcards · Type", "Start cram", false, () => openSetup("cram"), empty),
-          choice("Paradigms", "grid", "var(--brownish)", "Fill in charts, drill single forms, or identify forms for the article, nouns, pronouns and verbs.", "Chart · Drill · Identify", "Practice paradigms", false, () => go("paradigms", true)),
-          choice("Translate", "lang", "#5b6f8a", "Translate sentences the way you do by hand: parse each word, build the skeleton, then write the whole sentence.", "Greek → English · English → Greek · Library", "Translate sentences", false, () => go("translate"))),
+      body: h("div", { class: "home stack" },
+        h("div", { class: "hello" }, hello),
+        hero, tiles,
         installTip(),
-        O.loadError ? h("div", { style: "color:var(--bad)" }, O.loadError) : null,
-        h("div", { class: "muted small" }, empty ? "You don't have any words yet. Go to Add Words to import your vocabulary." : "Add more words anytime under Add Words.")),
+        O.loadError ? h("div", { style: "color:var(--bad)" }, O.loadError) : null),
     };
+  }
+
+  // Home's Continue button: what you last did, and where it stands now.
+  function continueInfo() {
+    const a = S.lastActivity;
+    if (!a) return null;
+    if (a.type === "translate") {
+      const ids = (a.ids || []).filter((id) => (O.data.sentences || []).some((s) => s.id === id));
+      if (!ids.length) return null;
+      const dir = a.dir || "g2e", done = ids.filter((id) => O.data.tResults[id + "|" + dir]).length;
+      const all = done >= ids.length;
+      return { title: `Translate · ${a.title}${all ? " · all done" : ` · sentence ${done + 1} of ${ids.length}`}`, done, total: ids.length,
+        note: all ? "Finished. Continue to go through it again." : `${ids.length - done} sentence${ids.length - done === 1 ? "" : "s"} left`, go: () => startTranslate(ids, a.chapter, dir, a.title) };
+    }
+    if (a.type === "vocab") {
+      const cards = O.cardsIn(a.scope);
+      if (!cards.length) return null;
+      const known = cards.filter((c) => (O.data.progress[c.id]?.intervalDays || 0) >= 3 || (O.data.mastery[c.id]?.strength || 0) >= 0.8).length;
+      const verb = { study: "Learn", daily: "Review", cram: "Cram" }[a.kind] || "Study";
+      return { title: `${verb} · ${O.scopeTitle(a.scope)}`, done: known, total: cards.length, note: `${known} of ${cards.length} words learned`, go: () => startSession(a.kind, a.scope) };
+    }
+    if (a.type === "paradigms") {
+      const ids = (a.ids || []).filter((id) => O.pById(id));
+      if (!ids.length) return null;
+      const done = ids.filter((id) => O.data.pDone[id]).length;
+      return { title: `Paradigms · ${a.title}`, done, total: ids.length, note: `${done} of ${ids.length} charts filled in correctly`, go: () => practiceParadigms(ids, a.chapter, a.title) };
+    }
+    return null;
+  }
+  function startTranslate(ids, chapter, dir, title) {
+    const todo = ids.filter((id) => !O.data.tResults[id + "|" + dir]);
+    window.OT.start(todo.length ? todo : ids, dir, title || (chapter ? "Chapter " + chapter : "Sentences"));
+  }
+  function practiceParadigms(ids, chapter, title) {
+    if (!ids.length) return;
+    O.setLast({ type: "paradigms", ids, chapter: chapter || null, title: title || (chapter ? "Chapter " + chapter : ids.length + " charts") });
+    st.section = "paradigms"; st.paradigmPractice = true; st.pstack = [{ view: "practice", ids }]; render();
+  }
+
+  // Every chapter, with vocab, paradigms and translation side by side.
+  function viewChapters() {
+    const dir = S.tDir || "g2e", cur = O.currentChapter();
+    const meter = (done, total, text) => h("div", null, h("div", { class: "hbar sm" }, h("i", { style: `width:${total ? Math.round((done / total) * 100) : 0}%`, class: total && done >= total ? "full" : "" })),
+      h("div", { class: "muted small" }, total ? text : "—"));
+    const rows = O.allChapters().map((n) => {
+      const v = O.vocabFor(n), pa = O.paradigmsFor(n), t = O.sentencesFor(n, dir);
+      return h("div", { class: "chrow" + (n === cur ? " cur" : "") },
+        h("b", null, "Chapter " + n, n === cur ? h("span", { class: "badge" }, "current") : null),
+        meter(v.known, v.total, v.known >= v.total ? `All ${v.total} words learned` : `${v.known} of ${v.total} words`),
+        meter(pa.done, pa.total, `${pa.done} of ${pa.total} charts`),
+        meter(t.done, t.total, `${t.done} of ${t.total} sentences`),
+        n === cur ? h("span") : h("button", { class: "btn sm", onclick: () => { O.set("currentChapter", n); go("home"); } }, "Study this"));
+    });
+    return { title: "All chapters", tools: h("button", { class: "btn", onclick: () => go("home") }, "← Home"),
+      body: h("div", { class: "card pad" },
+        h("div", { class: "chrow head muted small" }, h("span"), h("span", null, "Vocabulary"), h("span", null, "Paradigms"), h("span", null, "Translate"), h("span")),
+        rows.length ? rows : h("div", { class: "muted" }, "No chapters yet. Add words with a chapter number to see them here.")) };
+  }
+
+  // First launch: "What is your name?" (used for the greeting on Home).
+  function nameSheet(alone) {
+    let name = "";
+    const finish = () => { O.set("askedName", true); if (alone) closeModal(); else render(); };
+    const save = () => { const n = O.trim(name); if (n) O.set("userName", n.slice(0, 40)); else st.skipName = true; finish(); };
+    return h("div", { class: sheetClass(), style: "width:min(460px,100%)" },
+      h("div", { class: "body stack center" },
+        h("img", { src: "icon.png", class: "logo", style: "margin:0 auto;width:64px;height:64px", alt: "" }),
+        h("div", { style: "font-size:26px;font-weight:700" }, "What is your name?"),
+        h("div", { class: "muted" }, "Ostraka will use it to greet you. You can change it in Settings."),
+        h("input", { type: "text", placeholder: "Your first name", autocomplete: "given-name", "aria-label": "Your name", "data-autofocus": "", style: "font-size:18px;text-align:center",
+          oninput: (e) => { name = e.target.value; }, onkeydown: (e) => { if (e.key === "Enter") save(); } }),
+        h("button", { class: "btn pri big", onclick: save }, "Continue"),
+        h("button", { class: "btn link", onclick: () => { st.skipName = true; finish(); } }, "Skip")));
   }
 
   // On iPhone/iPad in Safari (not yet on the Home Screen), show how to install it.
@@ -163,6 +262,7 @@
   }
 
   function welcomeSheet() {
+    if (!S.userName && !st.skipName && !S.askedName) return nameSheet();
     const step = (n, ic, title, text) => h("div", { class: "row", style: "align-items:flex-start" },
       h("div", { class: "choice" }, h("div", { class: "ic", style: "background:var(--accent);width:38px;height:38px" }, icon(ic))),
       h("div", null, h("b", null, `${n}. ${title}`), h("div", { class: "muted small" }, text)));
@@ -173,7 +273,7 @@
         h("div", { style: "font-size:27px;font-weight:700" }, "Welcome to Ostraka!"),
         h("div", { class: "muted" }, "A place to learn Koine Greek vocabulary and paradigms. Here's how to start."),
         h("div", { class: "stack", style: "text-align:left" },
-          step(1, "plus", "Add your words", "Go to Add Words and paste or load your list. Each chapter becomes its own group."),
+          step(1, "plus", "Add your words", "Go to Vocabulary → + Add words and paste or load your list. Each chapter becomes its own group."),
           step(2, "target", "Pick how to study", "Study Session drills a group until you've mastered it. Daily Review takes a few minutes a day. Cram is for right before a quiz."),
           step(3, "grid", "Practice paradigms", "Over 60 charts are built in. Fill them in, drill single forms, or identify forms.")),
         h("button", { class: "btn pri big", onclick: () => { done(); st.modal = null; go("add"); } }, "Add my words"),
@@ -188,8 +288,8 @@
   ];
   const SHORT = { flashcards: "Flashcards", type: "Type", choice: "Choice", englishToGreek: "Eng → Gk", draw: "Draw", board: "Board" };
 
-  function openSetup(kind) {
-    let selected = ["all"];
+  function openSetup(kind, initial, pickNow) {
+    let selected = initial && initial.length ? initial.slice() : ["all"];
     // Picking single words: from the chapters/groups chosen, or all words.
     let picking = false, picked = new Set(), pickFrom = ["all"], pq = "";
     const count = (k) => (kind === "daily" ? O.reviewQueue(k).length : O.cardsIn(k).length);
@@ -238,6 +338,7 @@
             h("span", { class: "gk" }, c.greek), h("span", { class: "spacer" }), h("span", { class: "muted small" }, c.gloss)))),
       ];
     };
+    if (pickNow) { const others = selected.filter((x) => !x.startsWith("w:")); if (others.length) pickFrom = others; picked = new Set(); picking = true; }
     openModal(() => {
       if (picking) return h("div", { class: sheetClass() },
         h("div", { class: "body stack" }, pickerBody()),
@@ -277,6 +378,7 @@
   function startSession(kind, scope) {
     st.modal = null;
     const title = O.scopeTitle(scope);
+    O.setLast({ type: "vocab", kind, scope, title, chapter: O.chapterOfScope(scope) });
     if (kind === "study") st.session = { kind, title, engine: new O.MasteryEngine(O.cardsIn(scope)), p: {}, board: null };
     if (kind === "cram") {
       const cards = O.cardsIn(scope);
@@ -635,13 +737,49 @@
 
   // ---------- Vocabulary ----------
   let vocabSearch = "", selectingGroups = false, selectedGroups = new Set();
+  // One place to start studying: what (chapter tabs) → how (Learn / Review / Cram) → Start.
+  function studyPanel() {
+    const d = O.data;
+    if (!d.cards.length) return h("div", { class: "card pad stack center" }, h("b", { style: "font-size:18px" }, "No words yet"),
+      h("div", { class: "muted" }, "Add your vocabulary list to start studying."), h("div", null, h("button", { class: "btn pri", onclick: () => go("add") }, "+ Add words")));
+    const opts = O.scopeOptions();
+    if (!st.vocabScope || (!opts.includes(st.vocabScope) && !st.vocabScope.startsWith("w:"))) { const n = O.currentChapter(); st.vocabScope = n && opts.includes("c:" + n) ? "c:" + n : opts.find((k) => k.startsWith("g:") && O.chapterOfScope(k) === n) || "all"; }
+    const scope = st.vocabScope, kind = st.vocabKind || "study";
+    const cards = O.cardsIn(scope), known = cards.filter((c) => (d.progress[c.id]?.intervalDays || 0) >= 3 || (d.mastery[c.id]?.strength || 0) >= 0.8).length;
+    const due = O.reviewQueue(scope).length;
+    const count = kind === "daily" ? due : cards.length;
+    const choice = (k, title, text) => h("button", { class: "card how" + (kind === k ? " on" : ""), role: "radio", "aria-checked": kind === k ? "true" : "false", onclick: () => { st.vocabKind = k; render(); } },
+      h("span", { class: "radio" }), h("span", null, h("b", null, title), h("span", { class: "muted small" }, text)));
+    const select = (label, key, list) => h("label", { class: "row", style: "gap:6px" }, h("span", { class: "muted" }, label),
+      h("select", { onchange: (e) => { O.set(key, e.target.value); render(); } }, list.map(([id, t]) => h("option", { value: id, selected: S[key] === id || null }, t))));
+    const tabs = opts.map((k) => h("button", { class: "chip" + (scope === k ? " on" : ""), onclick: () => { st.vocabScope = k; render(); } }, O.scopeTitle(k)));
+    if (scope.startsWith("w:")) tabs.push(h("button", { class: "chip on", onclick: () => openSetup(kind, [scope], true) }, "✓ " + O.scopeTitle(scope)));
+    tabs.push(h("button", { class: "chip new", onclick: () => openSetup(kind, [scope.startsWith("w:") ? "all" : scope], true) }, "☑ Pick words…"));
+    return h("div", { class: "stack" },
+      h("div", { class: "chips" }, tabs),
+      h("div", { class: "card pad" }, h("div", { class: "row" }, h("b", { style: "font-size:17px" }, O.scopeTitle(scope) + " · " + cards.length + " words"), h("span", { class: "spacer" }),
+        h("span", { class: "badge" }, known + " learned")), h("div", { class: "hbar", style: "margin-top:10px" }, h("i", { style: `width:${cards.length ? Math.round((known / cards.length) * 100) : 0}%` }))),
+      h("div", { class: "label", style: "margin:4px 0 0" }, "How do you want to study?"),
+      h("div", { class: "stack", role: "radiogroup", style: "gap:10px" },
+        choice("study", "Learn", "Keep going until you know every word. Missed words come back sooner. Best most days."),
+        choice("daily", "Review", due ? `Spaced repetition: ${due} word${due === 1 ? "" : "s"} due today.` : "Spaced repetition: nothing due in this set today."),
+        choice("cram", "Cram", "A fast run before a quiz. Doesn't change your progress.")),
+      h("div", { class: "row wrap" },
+        kind === "study" ? select("Card style", "studyMode", MODES.map((m) => [m[0], m[1]])) : null,
+        kind === "cram" ? select("Card style", "cramMode", MODES.slice(0, 2).map((m) => [m[0], m[1]])) : null,
+        kind === "daily" ? select("Direction", "direction", [["greekToEnglish", "Greek → English"], ["englishToGreek", "English → Greek"], ["mixed", "Mixed"]]) : null,
+        h("span", { class: "spacer" }),
+        h("button", { class: "btn pri big", disabled: !count || null, onclick: () => startSession(kind, scope) }, count ? `Start · ${count} word${count === 1 ? "" : "s"}` : "Nothing to study here")));
+  }
+
   function viewVocab() {
     const listBox = h("div");
     const search = h("input", { type: "text", placeholder: "Search Greek or English", style: "width:100%", value: vocabSearch,
       oninput: () => { vocabSearch = search.value; drawList(); } });
     const drawList = () => listBox.replaceChildren(vocabList());
     drawList();
-    return { title: "Vocabulary", body: h("div", { class: "stack" }, search, listBox) };
+    return { title: "Vocabulary", tools: h("button", { class: "btn", onclick: () => go("add") }, "+ Add words"),
+      body: h("div", { class: "stack" }, studyPanel(), h("div", { class: "sec-h", style: "margin-top:14px" }, "All your words"), search, listBox) };
   }
 
   function wordRow(c) {
@@ -693,7 +831,7 @@
         k !== "none" ? h("button", { class: "btn link", onclick: () => { O.togglePinScope("c:" + k); render(); } }, pin ? "Unpin" : "Pin") : null));
       out.push(h("div", { class: "list" }, byCh.get(k).map(wordRow)));
     });
-    if (!O.data.cards.length) out.push(h("div", { class: "muted center", style: "margin-top:30px" }, "No words yet. Add some under Add Words."));
+    if (!O.data.cards.length) out.push(h("div", { class: "muted center", style: "margin-top:30px" }, "No words yet. Use “+ Add words” at the top."));
     else if (!cards.length) out.push(h("div", { class: "muted center", style: "margin-top:30px" }, "No words match your search."));
     return h("div", null, out);
   }
@@ -879,7 +1017,12 @@
       h("button", { class: "btn", disabled: s.index === 0, onclick: () => { s.index--; render(); } }, "‹ Previous"), h("span", { class: "spacer" }),
       h("div", { class: "center" }, h("b", null, O.pLabel(p)), h("div", { class: "muted small" }, `Chart ${s.index + 1} of ${ps.length}`)), h("span", { class: "spacer" }),
       h("button", { class: "btn", disabled: s.index >= ps.length - 1, onclick: () => { s.index++; render(); } }, "Next ›")) : null;
-    const check = () => { s.checked[p.id] = true; render(); };
+    const check = () => {
+      s.checked[p.id] = true;
+      let all = true; p.rows.forEach((_, r) => p.columns.forEach((_, c) => { if (!ok(r, c)) all = false; }));
+      if (all) { O.data.pDone[p.id] = true; O.save(); }
+      render();
+    };
     st.keys = (e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && !checked) check(); };
     return [pager, h("div", { class: "scroll-x" }, table),
       h("div", { class: "row" },
@@ -894,6 +1037,7 @@
   function formDrill(ps, s) {
     if (!s.queue) { s.queue = allSlots(ps); s.right = 0; s.answered = 0; }
     if (!s.queue.length) {
+      if (s.answered && s.right === s.answered && !s.marked) { s.marked = true; ps.forEach((p) => { O.data.pDone[p.id] = true; }); O.save(); }
       st.keys = (e) => { if (e.key === "Enter") { s.queue = null; render(); } };
       return h("div", { class: "stack center", style: "margin-top:30px" }, h("div", { style: "font-size:24px;font-weight:700" }, "Every form right!"),
         h("div", { class: "muted" }, `${s.right} of ${s.answered} right on the first try.`),
@@ -993,7 +1137,7 @@
       st.msg = "Exported your words to " + name + "."; render();
     };
     return {
-      title: "Add Words",
+      title: "Add Words", tools: h("button", { class: "btn", onclick: () => go("vocab") }, "← Vocabulary"),
       body: h("div", { class: "stack" },
         O.data.cards.length ? h("div", { class: "card pad stack" }, h("b", null, `Your words (${O.data.cards.length})`),
           h("div", { class: "row wrap" }, h("input", { type: "text", value: imp.presetName, placeholder: "Preset name", oninput: (e) => { imp.presetName = e.target.value; } }),
@@ -1021,6 +1165,9 @@
     return {
       title: "Settings",
       body: h("div", { class: "stack" },
+        h("div", { class: "card pad stack" }, h("b", null, "You"),
+          h("label", { class: "row" }, "Your name", h("span", { class: "spacer" }),
+            h("input", { type: "text", value: S.userName || "", placeholder: "For the greeting on Home", style: "width:220px", onchange: (e) => { O.set("userName", O.trim(e.target.value).slice(0, 40)); render(); } }))),
         h("div", { class: "card pad stack" }, h("b", null, "Daily Review"),
           h("label", { class: "row" }, "New words per day", h("span", { class: "spacer" }),
             h("input", { type: "number", min: 5, max: 100, step: 5, value: S.newPerDay, style: "width:90px", onchange: (e) => { O.set("newPerDay", Math.max(1, +e.target.value || 15)); render(); } }))),

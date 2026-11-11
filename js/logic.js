@@ -157,7 +157,7 @@
   // ---------- Saved data ----------
   const KEY = "ostraka-data-v1";
   const defaults = () => ({
-    cards: [], progress: {}, mastery: {}, groups: [], presets: [],
+    cards: [], progress: {}, mastery: {}, groups: [], presets: [], pDone: {},
     pinnedScopes: [], pinnedWords: [],
     settings: {
       newPerDay: 15, direction: "greekToEnglish", studyMode: "flashcards", cramMode: "flashcards",
@@ -247,6 +247,36 @@
     if (O.cardsIn("missed").length) opts.push("missed");
     return opts;
   };
+
+  // ---------- Chapters (Home) ----------
+  // Every chapter that has vocabulary, paradigms or translation sentences.
+  O.allChapters = () => {
+    const set = new Set(O.chapters());
+    (window.PARADIGMS || []).forEach((p) => { const n = O.pChapter(p.id); if (n) set.add(n); });
+    (O.data.sentenceGroups || []).forEach((g) => { const m = /^chapter\s+(\d+)$/i.exec(g.name.trim()); if (m && g.ids.length) set.add(+m[1]); });
+    return [...set].sort((a, b) => a - b);
+  };
+  O.vocabFor = (n) => { const all = O.cardsIn("c:" + n); return { total: all.length, known: all.filter((c) => (O.data.progress[c.id]?.intervalDays || 0) >= 3 || (O.data.mastery[c.id]?.strength || 0) >= 0.8).length }; };
+  O.paradigmsFor = (n) => { const list = (window.PARADIGMS || []).filter((p) => O.pChapter(p.id) === n); return { ids: list.map((p) => p.id), total: list.length, done: list.filter((p) => O.data.pDone[p.id]).length }; };
+  O.sentencesFor = (n, dir) => {
+    const g = (O.data.sentenceGroups || []).find((x) => O.fold(x.name.trim()) === O.fold("Chapter " + n));
+    const ids = g ? g.ids.filter((id) => (O.data.sentences || []).some((s) => s.id === id)) : [];
+    return { ids, total: ids.length, done: ids.filter((id) => O.data.tResults[id + "|" + (dir || "g2e")]).length };
+  };
+  // The chapter you're on: the one you last studied, else the first one not finished.
+  O.currentChapter = () => {
+    const S = O.data.settings, list = O.allChapters();
+    if (S.currentChapter && list.includes(S.currentChapter)) return S.currentChapter;
+    return list.find((n) => { const v = O.vocabFor(n); return v.total && v.known < v.total; }) || list[0] || null;
+  };
+  O.chapterOfScope = (scope) => {
+    const k = Array.isArray(scope) ? (scope.length === 1 ? scope[0] : "") : scope;
+    if (k.startsWith("c:")) return +k.slice(2);
+    if (k.startsWith("g:")) { const g = O.data.groups.find((x) => x.id === k.slice(2)); const m = g && /^chapter\s+(\d+)$/i.exec(g.name.trim()); return m ? +m[1] : null; }
+    return null;
+  };
+  // What you did last, for Home's Continue button.
+  O.setLast = (a) => { O.data.settings.lastActivity = { ...a, at: Date.now() }; if (a.chapter) O.data.settings.currentChapter = a.chapter; O.save(); };
 
   O.isPinnedScope = (k) => O.data.pinnedScopes.includes(k);
   O.togglePinScope = (k) => {

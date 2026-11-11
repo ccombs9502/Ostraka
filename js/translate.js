@@ -497,6 +497,10 @@
     ids = ids.filter((id) => byId(id));
     if (!ids.length) return;
     T.session = { ids, i: 0, dir: dir || "g2e", title: title || "Translate", done: [] };
+    // For Home's Continue button.
+    const chs = [...new Set(ids.map((id) => (byId(id) || {}).chapter).filter((c) => c != null))];
+    const m = /^chapter\s+(\d+)$/i.exec((title || "").trim());
+    O.setLast({ type: "translate", ids: m ? O.sentencesFor(+m[1], dir || "g2e").ids : ids, dir: dir || "g2e", title: title || "Sentences", chapter: m ? +m[1] : chs.length === 1 ? chs[0] : null });
     if (!E.ready) { E.load(() => { prepare(); render(); }); render(); return; }
     prepare(); render();
   };
@@ -615,7 +619,7 @@
       }
       if (step === "mean") {
         const gl = forms.length ? E.gloss(forms[0].lemma) : "";
-        mark("mean", !!(a.f.mean || "").trim() && (a.override || !gl || meanOk(a.f.mean, gl)));
+        mark("mean", !!(a.f.mean || "").trim() && (a.override || !gl || meanOk(a.f.mean, gl, forms[0] && forms[0].lemma)));
       }
       if (step === "parse") {
         const fields = fieldsNow(u, a);
@@ -699,8 +703,15 @@
     return `${u.greek} is genitive, so it usually reads “of …” (or “…'s”, or “my/his/their …”). If your English fits here anyway, press Check again to keep it.`;
   }
   // "and, even, also" counts when any of the meanings listed is right.
-  function meanOk(ans, gl) {
+  // Personal pronouns: "my" for ἐγώ, "his" for αὐτός … count as the dictionary meaning too.
+  const PRON_FORMS = {
+    "εγω": "i me my mine myself", "συ": "you your yours yourself thou thee thy", "ημεισ": "we us our ours", "υμεισ": "you your yours ye",
+    "αυτοσ": "he him his she her hers it its they them their theirs self himself herself itself themselves same",
+  };
+  function meanOk(ans, gl, lemma) {
     if (O.checkEnglish(ans, gl)) return true;
+    const pf = lemma && PRON_FORMS[E.fw(lemma).replace(/ς/g, "σ")];
+    if (pf && ans.toLowerCase().split(/[^a-z]+/).some((w) => w && pf.split(" ").includes(w))) return true;
     const parts = ans.split(/[,;\/]| or /).map((x) => x.trim()).filter(Boolean);
     return parts.length > 1 && parts.some((x) => O.checkEnglish(x, gl));
   }
@@ -767,7 +778,7 @@
         "Use the outline: start with the verb, then its subject and object, then the phrases. Read your word-by-word line for the meanings.";
     } else {
       const u = ss.units[ss.hint.u], a = ss.ans[ss.hint.u];
-      title = `Hint ${ss.hint.tier} of 2 · ` + { kind: "What is it?", lex: "Lexical form", mean: "Meaning", parse: "Parsing", ctx: "In this sentence", form: "Writing the form" }[ss.hint.step];
+      title = `Hint ${ss.hint.tier} of 2 · ` + { kind: "What is it?", lex: "Lexical form", mean: "Dictionary meaning", parse: "Parsing", ctx: "In this sentence", form: "Writing the form" }[ss.hint.step];
       body = hintText(u, a, ss.hint.step, ss.hint.tier);
     }
     return h("div", { class: "t-pop" + ap("thint", JSON.stringify(ss.hint)) },
@@ -1104,8 +1115,8 @@
 
     // Meaning
     if (!e2g && !noMean(u)) {
-      if (isCompact("mean", (a.f.mean || "").trim(), true)) rows.push(compactRow("mean", "Meaning", a.f.mean));
-      else rows.push(row("mean", "Meaning", textIn({ value: a.f.mean || "", placeholder: "dictionary meaning", autofocus: af("mean") || a.open.mean, oninput: (v) => { a.f.mean = v; delete a.ok.mean; a.override = false; refreshLive(); }, onenter: enterText("mean") }),
+      if (isCompact("mean", (a.f.mean || "").trim(), true)) rows.push(compactRow("mean", "Dictionary meaning", a.f.mean));
+      else rows.push(row("mean", h("span", null, "Dictionary meaning", h("small", { class: "t-khint" }, "what the dictionary form means")), textIn({ value: a.f.mean || "", placeholder: "e.g. λόγου → “word” (not “of a word”)", autofocus: af("mean") || a.open.mean, oninput: (v) => { a.f.mean = v; delete a.ok.mean; a.override = false; refreshLive(); }, onenter: enterText("mean") }),
         a.ok.mean === false && (a.f.mean || "").trim() ? h("button", { class: "btn link", onclick: () => { a.override = true; a.ok.mean = true; render(); } }, "✓ I was right, count it") : null));
     }
 
@@ -1133,7 +1144,7 @@
     // In this sentence / write the form
     if (!e2g) {
       if (isCompact("ctx", (a.f.ctx || "").trim(), true)) rows.push(compactRow("ctx", "In this sentence", a.f.ctx));
-      else rows.push(row("ctx", "In this sentence", textIn({ value: a.f.ctx || "", placeholder: "how it reads here, e.g. “of man”", autofocus: af("ctx") || a.open.ctx, oninput: (v) => { a.f.ctx = v; delete a.ok.ctx; refreshLive(); }, onenter: enterText("ctx") }), a.ctxMsg ? h("div", { class: "note t-ctxmsg" }, a.ctxMsg) : null));
+      else rows.push(row("ctx", h("span", null, "In this sentence", h("small", { class: "t-khint" }, "how this exact form reads here")), textIn({ value: a.f.ctx || "", placeholder: "how it reads here, e.g. “of man”", autofocus: af("ctx") || a.open.ctx, oninput: (v) => { a.f.ctx = v; delete a.ok.ctx; refreshLive(); }, onenter: enterText("ctx") }), a.ctxMsg ? h("div", { class: "note t-ctxmsg" }, a.ctxMsg) : null));
     } else {
       const preview = h("div", { class: "t-formprev" });
       const paint = () => { const v = a.f.form || ""; if (!v.trim()) { preview.replaceChildren(); return; } const r = E.restoreSentence(v); preview.replaceChildren(h("span", { class: "muted small" }, "With marks: "), h("span", { class: "greek", style: "font-size:19px" }, r.words.map((w) => [w.segs.map((sg) => sg.add ? h("span", { class: "t-add" }, sg.t) : sg.t), " "]))); };
