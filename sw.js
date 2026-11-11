@@ -1,6 +1,6 @@
 // Ostraka offline support: keeps a copy of the app so it opens without internet.
 // Bump VERSION whenever the app files change so phones pick up the update.
-const VERSION = "ostraka-web-13";
+const VERSION = "ostraka-web-14";
 const FILES = [
   "./", "index.html", "styles.css", "manifest.webmanifest",
   "js/paradigms.js", "js/logic.js", "data/practice.js", "js/tengine.js", "js/translate.js", "js/app.js",
