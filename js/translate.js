@@ -153,29 +153,31 @@
       render();
     };
     const s = S();
+    // Chapters are shown as cards above, so the list below only offers the
+    // other ways to pick sentences (all, not done yet, used help, your groups).
+    const isChapter = (k) => k.startsWith("c:") || (k.startsWith("g:") && /^chapter\s+\d+$/i.test(((d.sentenceGroups.find((g) => "g:" + g.id === k) || {}).name || "").trim()));
+    const others = scopeOptions().filter((k) => !isChapter(k));
+    if (tr.scope.some(isChapter)) tr.scope = ["all"];
     return [
+      h("div", { class: "card pad stack" },
+        h("div", { class: "row wrap" }, h("div", { style: "font-size:21px;font-weight:700" }, "Translate sentences"), h("span", { class: "spacer" }),
+          seg([["g2e", "Greek → English"], ["e2g", "English → Greek"]], s.tDir, (v) => { O.set("tDir", v); render(); })),
+        h("div", { class: "muted" }, "Parse each word, put the words in order, then write the whole sentence. Pick a chapter to start or keep going.")),
       chapterCards(),
       h("div", { class: "card pad stack" },
-        h("div", { style: "font-size:21px;font-weight:700" }, "Translate sentences"),
-        h("div", { class: "muted" }, "Parse each word, build the skeleton, then write the whole sentence. Works the way you translate by hand."),
-        h("div", { class: "label" }, "1 · Direction"),
-        seg([["g2e", "Greek → English"], ["e2g", "English → Greek"]], s.tDir, (v) => { O.set("tDir", v); render(); }),
-        h("div", { class: "label" }, "2 · Choose sentences (tap as many as you like)"),
-        h("div", { class: "chips" }, scopeOptions().map((k) => h("button", { class: "chip" + (tr.scope.includes(k) ? " on" : ""), onclick: () => pick(k) }, scopeTitle(k), h("small", null, T.scopeIds(k).length)))),
-        h("div", { class: "label" }, "3 · Options"),
-        h("div", { class: "stack", style: "gap:8px" },
+        h("b", { style: "font-size:17px" }, "Other sentences"),
+        h("div", { class: "chips" }, others.map((k) => h("button", { class: "chip" + (tr.scope.includes(k) ? " on" : ""), onclick: () => pick(k) }, scopeTitle(k), h("small", null, T.scopeIds(k).length)))),
+        h("div", { class: "row" },
+          h("span", { class: "muted" }, ids.length + (ids.length === 1 ? " sentence" : " sentences")), h("span", { class: "spacer" }),
+          h("button", { class: "btn pri", disabled: !ids.length || null, onclick: () => T.start(ids, s.tDir, tr.scope.map(scopeTitle).join(" + ")) }, "Start"))),
+      h("details", { class: "card pad t-opts", open: tr.optsOpen || null, ontoggle: (e) => { tr.optsOpen = e.target.open; } },
+        h("summary", null, h("b", null, "Options")),
+        h("div", { class: "stack", style: "gap:8px;margin-top:10px" },
           toggle(s.tLinkArticles, "Link articles automatically", (v) => { O.set("tLinkArticles", v); render(); }, "Good for beginners: each article comes joined to its noun."),
           toggle(s.tShowStructure, "Show structure", (v) => { O.set("tShowStructure", v); render(); }, "Starts the skeleton already filled in. Counts as help."),
           toggle(s.tSkelAdvanced, "Advanced skeleton", (v) => { O.set("tSkelAdvanced", v); render(); }, "Build an indented outline and name each phrase (verb, subject, object…) instead of just putting the words in order."),
           h("div", { class: "row wrap" }, h("span", null, "Labels"), seg([["full", "Full words"], ["short", "Short"]], s.tLabelsFull ? "full" : "short", (v) => { O.set("tLabelsFull", v === "full"); render(); }),
-            h("span", { style: "margin-left:12px" }, "Notes"), seg([["folded", "Folded"], ["full", "Full"]], s.tNotesFull ? "full" : "folded", (v) => { O.set("tNotesFull", v === "full"); render(); }))),
-        h("div", { class: "row", style: "margin-top:8px" },
-          h("span", { class: "muted" }, ids.length + (ids.length === 1 ? " sentence" : " sentences")), h("span", { class: "spacer" }),
-          h("button", { class: "btn pri big", disabled: !ids.length || null, onclick: () => T.start(ids, s.tDir, tr.scope.map(scopeTitle).join(" + ")) }, "Start translating"))),
-      h("div", { class: "row wrap" },
-        h("button", { class: "btn", onclick: () => { tr.tab = "type"; render(); } }, "Type a sentence"),
-        h("button", { class: "btn", onclick: () => { tr.tab = "import"; render(); } }, "Import sentences"),
-        h("button", { class: "btn", onclick: () => { tr.tab = "library"; render(); } }, "Open Library")),
+            h("span", { style: "margin-left:12px" }, "Notes"), seg([["folded", "Folded"], ["full", "Full"]], s.tNotesFull ? "full" : "folded", (v) => { O.set("tNotesFull", v === "full"); render(); })))),
     ];
   }
   // Chapters in order, each with how many you've done (in the direction chosen
@@ -196,8 +198,7 @@
         h("div", { class: "small muted" }, all ? "✓ All " + total + " done" : done ? `${done} of ${total} · Continue` : `${total} sentences · Start`));
     };
     return h("div", { class: "card pad stack" },
-      h("div", { class: "row" }, h("b", { style: "font-size:17px" }, "Practice by chapter"), h("span", { class: "spacer" }),
-        h("span", { class: "muted small" }, dir === "e2g" ? "English → Greek" : "Greek → English")),
+      h("b", { style: "font-size:17px" }, "By chapter"),
       h("div", { class: "t-chgrid" }, chapters.map(card)));
   }
   const emptyLibrary = () => h("div", { class: "card pad stack center" },

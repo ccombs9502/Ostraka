@@ -541,3 +541,4 @@ html.embed .side, html.embed .tabs { display: none !important; }
 html.embed .shell { height: 100vh; }
 html.embed .main { padding-bottom: 0; }
 .t-answer.sm { margin-top: 2px; } .t-answer-k .label { text-align: center; }
+.t-opts summary { cursor: pointer; list-style: none; } .t-opts summary::before { content: "▸ "; color: var(--muted); } .t-opts[open] summary::before { content: "▾ "; }
