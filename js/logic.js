@@ -213,6 +213,8 @@
     if (key === "missed") return byChapter(d.cards.filter((c) => { const m = d.mastery[c.id]; return m && m.missed >= 2 && m.strength < 0.6; }));
     if (key === "pinned") return byChapter(d.cards.filter((c) => d.pinnedWords.includes(c.id)));
     if (key.startsWith("c:")) { const n = +key.slice(2); return byChapter(d.cards.filter((c) => c.chapter === n)); }
+    // "w:id1,id2": words picked one by one for this session.
+    if (key.startsWith("w:")) { const ids = new Set(key.slice(2).split(",")); return byChapter(d.cards.filter((c) => ids.has(c.id))); }
     if (key.startsWith("g:")) {
       const g = d.groups.find((x) => x.id === key.slice(2));
       if (!g) return [];
@@ -228,6 +230,7 @@
     if (key === "missed") return "Missed often";
     if (key === "pinned") return "Pinned words";
     if (key.startsWith("c:")) return "Chapter " + key.slice(2);
+    if (key.startsWith("w:")) { const n = key.slice(2).split(",").filter(Boolean).length; return n + (n === 1 ? " picked word" : " picked words"); }
     if (key.startsWith("g:")) return (O.data.groups.find((g) => g.id === key.slice(2)) || {}).name || "Group";
     return key;
   };

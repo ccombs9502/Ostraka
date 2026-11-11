@@ -190,9 +190,12 @@
 
   function openSetup(kind) {
     let selected = ["all"];
+    // Picking single words: from the chapters/groups chosen, or all words.
+    let picking = false, picked = new Set(), pickFrom = ["all"], pq = "";
     const count = (k) => (kind === "daily" ? O.reviewQueue(k).length : O.cardsIn(k).length);
     const scope = () => (selected.length === 1 ? selected[0] : selected.slice());
     const toggle = (k) => {
+      selected = selected.filter((x) => !x.startsWith("w:"));
       if (k === "all") selected = ["all"];
       else {
         selected = selected.filter((x) => x !== "all");
@@ -210,7 +213,40 @@
       daily: "Grade each word honestly. Words you know will rest for days, and words you miss come back soon.",
       cram: "Missed words come right back. Cram doesn't change your Daily Review schedule or your Study Session progress.",
     }[kind];
+    const startPick = () => {
+      const cur = selected.find((x) => x.startsWith("w:"));
+      const others = selected.filter((x) => !x.startsWith("w:"));
+      if (others.length) pickFrom = others; // otherwise keep showing the last list
+      picked = new Set(cur ? cur.slice(2).split(",") : []);
+      pq = ""; picking = true; render();
+    };
+    const pickerBody = () => {
+      const pool = O.cardsIn(pickFrom.length === 1 ? pickFrom[0] : pickFrom), fq = O.fold(O.trim(pq));
+      const list = pool.filter((c) => !fq || O.fold(c.greek).includes(fq) || O.fold(c.gloss).includes(fq));
+      const allOn = list.length > 0 && list.every((c) => picked.has(c.id));
+      const flip = (c) => { picked.has(c.id) ? picked.delete(c.id) : picked.add(c.id); render(); };
+      return [
+        h("div", { style: "font-size:22px;font-weight:700" }, "Pick words"),
+        h("div", { class: "muted" }, "Choose exactly the words you want to practice, like just 3 from a chapter. Showing: " + O.scopeTitle(pickFrom.length === 1 ? pickFrom[0] : pickFrom) + "."),
+        h("input", { type: "text", placeholder: "🔍 Search Greek or English", value: pq, oninput: (e) => { pq = e.target.value; render(); setTimeout(() => { const i = document.querySelector(".pick-q"); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }, 0); }, class: "pick-q" }),
+        h("div", { class: "sec-h" }, list.length + " words", h("span", { class: "spacer" }), picked.size + " picked",
+          h("button", { class: "btn link", onclick: () => { list.forEach((c) => (allOn ? picked.delete(c.id) : picked.add(c.id))); render(); } }, allOn ? "Deselect these" : "Select all"),
+          picked.size ? h("button", { class: "btn link", onclick: () => { picked.clear(); render(); } }, "Clear") : null),
+        h("div", { class: "list", style: "max-height:46vh;overflow:auto" }, list.map((c) =>
+          h("div", { class: "li", onclick: () => flip(c) },
+            h("span", { style: "font-size:18px;color:" + (picked.has(c.id) ? "var(--accent)" : "var(--muted)") }, picked.has(c.id) ? "●" : "○"),
+            h("span", { class: "gk" }, c.greek), h("span", { class: "spacer" }), h("span", { class: "muted small" }, c.gloss)))),
+      ];
+    };
     openModal(() => {
+      if (picking) return h("div", { class: sheetClass() },
+        h("div", { class: "body stack" }, pickerBody()),
+        h("div", { class: "foot" },
+          h("button", { class: "btn", onclick: () => { picking = false; render(); } }, "Back"),
+          h("button", { class: "btn pri", disabled: !picked.size, onclick: () => {
+            const ids = O.cardsIn("all").map((c) => c.id).filter((id) => picked.has(id));
+            selected = ["w:" + ids.join(",")]; picking = false; render();
+          } }, picked.size ? `Use ${picked.size} word${picked.size === 1 ? "" : "s"}` : "Pick some words")));
       const n = count(scope());
       const modeTiles = (list, key) => h("div", { class: "modes" }, list.map(([id, t, sub, g]) =>
         h("button", { class: "mode" + (S[key] === id ? " on" : ""), onclick: () => { O.set(key, id); render(); } },
@@ -222,8 +258,10 @@
           h("div", { class: "chips" },
             O.scopeOptions().map((k) => h("button", { class: "chip" + (selected.includes(k) ? " on" : ""), onclick: () => toggle(k), title: k.startsWith("c:") || k.startsWith("g:") ? "Right-click to pin" : null, oncontextmenu: (e) => { if (k.startsWith("c:") || k.startsWith("g:")) { e.preventDefault(); O.togglePinScope(k); render(); } } },
               O.isPinnedScope(k) || k === "pinned" ? "📌 " : "", O.scopeTitle(k), h("small", null, count(k)))),
+            selected.filter((k) => k.startsWith("w:")).map((k) => h("button", { class: "chip on", onclick: startPick, title: "Change which words" }, "✓ " + O.scopeTitle(k), h("small", null, count(k)))),
+            h("button", { class: "chip new", onclick: startPick, title: "Choose single words from the chapters or groups you tapped" }, "☑ Pick words…"),
             h("button", { class: "chip new", onclick: () => groupEditor(null, (g) => { selected = ["g:" + g.id]; }) }, "+ New group")),
-          h("div", { class: "hint" }, "Right-click a chapter or group to pin it to the front."),
+          h("div", { class: "hint" }, "Want only a few words? Tap a chapter, then “Pick words…” to choose just the ones you want. Right-click a chapter or group to pin it."),
           kind === "study" ? [h("div", { class: "label" }, "2 · Choose a mode (you can switch any time)"), modeTiles(MODES, "studyMode")] : null,
           kind === "cram" ? [h("div", { class: "label" }, "2 · Choose a mode"), modeTiles(MODES.slice(0, 2), "cramMode")] : null,
           kind === "daily" ? [h("div", { class: "label" }, "2 · Direction"),
