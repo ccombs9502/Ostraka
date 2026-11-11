@@ -6,7 +6,7 @@
   if (O.embedded) {
     document.documentElement.classList.add("embed");
     // The app prints (Show work → Download PDF) with its own print panel.
-    window.print = () => O.post({ type: "print" });
+    window.print = () => O.post({ type: "print", title: document.title });
   }
   const S = O.data.settings;
 

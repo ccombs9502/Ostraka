@@ -1664,14 +1664,14 @@
         h("div", { class: "t-medal" }, "✓"),
         h("div", { style: "font-size:25px;font-weight:700;position:relative" }, "Sentence translated!"),
         h("div", { class: "greek", style: "font-size:23px;position:relative" }, sentenceGreek(s)),
-        eng ? h("div", { style: "font-size:17px;position:relative" }, "“" + eng + "”") : null,
+        eng ? h("div", { style: "font-size:17px;position:relative" }, "“" + eng.trim().replace(/^["“”]+|["“”]+$/g, "") + "”") : null,
         !e2g && s.answerBy && s.english ? h("div", { class: "t-answer-k", style: "position:relative" }, h("div", { class: "label", style: "margin:6px 0 0" }, s.answerBy + "'s answer"), answerBlock(s, true)) : null,
         h("div", { class: "t-stats" },
           [[`${r.units} / ${r.units}`, e2g ? "words built" : "words parsed"], [r.firstTry, "right first try"], [mm, "time"], ["🔥 " + streak(), "day streak"]].map(([a, b]) => h("div", null, h("b", null, a), h("span", null, b)))),
-        h("div", { class: "row", style: "margin-top:6px" },
-          h("button", { class: "btn big", style: "flex:1", onclick: () => { closeModal(); prepare(); render(); } }, help ? "↺ Try again without hints" : "↺ Try again"),
-          h("button", { class: "btn big", style: "flex:1", onclick: () => showWork([s.id + "|" + ss.dir], () => openModal(completeSheet, false)) }, "📄 Show work"),
-          h("button", { class: "btn pri big", style: "flex:1", "data-autofocus": "", onclick: () => { closeModal(); if (last) { T.session = null; tr.tab = "library"; window.OUI.st.section = "translate"; render(); } else { ss.i++; prepare(); render(); } } }, last ? "Finish" : "Next sentence →"))));
+        h("div", { class: "t-done-btns" },
+          h("button", { class: "btn big", onclick: () => { closeModal(); prepare(); render(); } }, help ? "↺ Try again without hints" : "↺ Try again"),
+          h("button", { class: "btn big", onclick: () => showWork([s.id + "|" + ss.dir], () => openModal(completeSheet, false)) }, "📄 Show work"),
+          h("button", { class: "btn pri big", "data-autofocus": "", onclick: () => { closeModal(); if (last) { T.session = null; tr.tab = "library"; window.OUI.st.section = "translate"; render(); } else { ss.i++; prepare(); render(); } } }, last ? "Finish" : "Next sentence →"))));
   }
 
   // ---------- Show work (for handing in homework) ----------
@@ -1682,6 +1682,27 @@
   };
   const WORK_COLORS = ["#1f78b4", "#2f8a43", "#c26a12", "#c2357e", "#6a4fc9", "#957800", "#d0532a", "#13857a", "#5c8a0e", "#b8336a", "#3d5fd1", "#a8630f"];
   const waveSvg = (c) => `<svg class="ws-wave" viewBox="0 0 130 10"><path d="M2 5 Q 10 0 18 5 T 34 5 T 50 5 T 66 5 T 82 5 T 98 5 T 114 5 T 128 5" fill="none" stroke="${c}" stroke-width="2.5" stroke-linecap="round"/></svg>`;
+  // A sentence's number in its chapter (Chapter 10, sentence 4), from the
+  // chapter group's order, which follows the professor's sheet.
+  function sentNumber(s) {
+    if (!s || s.chapter == null) return null;
+    const g = O.data.sentenceGroups.find((x) => O.fold(x.name.trim()) === O.fold("Chapter " + s.chapter));
+    const i = g ? g.ids.indexOf(s.id) : -1;
+    return i >= 0 ? i + 1 : null;
+  }
+  // File name for the PDF: Chap10Translation4, Chap10Translation4-6, Chap10Translations…
+  function workFileName(keys) {
+    const ss = keys.map((k) => byId(k.split("|")[0])).filter(Boolean);
+    if (!ss.length) return "Translation";
+    const chs = [...new Set(ss.map((s) => s.chapter))];
+    const nums = ss.map(sentNumber).filter((n) => n != null).sort((a, b) => a - b);
+    if (chs.length !== 1 || chs[0] == null) return ss.length === 1 ? "Translation" : "Translations";
+    const ch = "Chap" + chs[0];
+    if (nums.length !== ss.length || !nums.length) return ch + "Translations";
+    if (nums.length === 1) return ch + "Translation" + nums[0];
+    const run = nums.every((n, i) => !i || n === nums[i - 1] + 1);
+    return ch + "Translations" + (run ? nums[0] + "-" + nums[nums.length - 1] : nums.join("_"));
+  }
   function workSheet(keys, title) {
     const d = O.data;
     const name = S().tStudentName || "";
@@ -1711,7 +1732,7 @@
           h("span", { class: "ws-ph" }, r.units.map((n) => { const u = w.units[n]; return e2g ? (u.cue || "") + " = " + u.greek : u.greek; }).join(e2g ? " · " : " ")),
           r.role ? h("span", { class: "ws-role" }, r.role) : null))) : null;
         return h("div", { class: "ws-sent" },
-          h("div", { class: "ws-num" }, `${i + 1}. `, s.ref || "", s.chapter != null ? h("span", { class: "ws-ch" }, " · Chapter " + s.chapter) : null, e2g ? h("span", { class: "ws-ch" }, " · English → Greek") : null),
+          h("div", { class: "ws-num" }, `${sentNumber(s) || i + 1}. `, s.ref || "", s.chapter != null ? h("span", { class: "ws-ch" }, " · Chapter " + s.chapter) : null, e2g ? h("span", { class: "ws-ch" }, " · English → Greek") : null),
           e2g ? h("div", { class: "ws-prompt" }, w.prompt) : h("div", { class: "ws-greek" }, E.sentenceText(s, true)),
           h("div", { class: "ws-words" }, words),
           h("div", { class: "ws-label" }, e2g ? "Greek" : "Translation"),
@@ -1736,7 +1757,10 @@
     if (!root) { root = document.createElement("div"); root.id = "t-print"; document.body.append(root); }
     root.replaceChildren(workSheet(keys, title));
     document.body.classList.add("t-printing");
-    const done = () => { document.body.classList.remove("t-printing"); root.replaceChildren(); window.removeEventListener("afterprint", done); };
+    // The browser names the PDF after the page title.
+    const oldTitle = document.title;
+    document.title = workFileName(keys);
+    const done = () => { document.body.classList.remove("t-printing"); root.replaceChildren(); document.title = oldTitle; window.removeEventListener("afterprint", done); };
     window.addEventListener("afterprint", done);
     setTimeout(() => window.print(), 60);
   }

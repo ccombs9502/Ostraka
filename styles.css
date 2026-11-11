@@ -597,3 +597,7 @@ button:focus-visible, .chip:focus-visible, .how:focus-visible, .tile:focus-visib
 /* Show work: the translation is the point, so make it big */
 .ws-final { font-size: 24px; font-weight: 600; line-height: 1.35; }
 .ws-final.gk { font-size: 27px; }
+/* Completion window buttons: centered, wrap instead of being cut off */
+.t-done-btns { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 6px; width: 100%; }
+.t-done-btns .btn { flex: 1 1 180px; max-width: 100%; white-space: normal; }
+@media (max-width: 600px) { .t-done-btns .btn { flex-basis: 100%; } }
