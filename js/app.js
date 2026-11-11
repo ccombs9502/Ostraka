@@ -1176,7 +1176,7 @@
           h("div", { class: "row" }, "Groups", h("span", { class: "spacer" }), h("span", { class: "muted" }, O.data.groups.length)),
           h("div", { class: "row" }, "Reviewed at least once", h("span", { class: "spacer" }), h("span", { class: "muted" }, Object.keys(O.data.progress).length))),
         h("div", { class: "card pad stack" }, h("b", null, "About"),
-          h("div", { class: "row" }, "Version", h("span", { class: "spacer" }), h("span", { class: "muted" }, "Ostraka Web 14")),
+          h("div", { class: "row" }, "Version", h("span", { class: "spacer" }), h("span", { class: "muted" }, "Ostraka Web 15")),
           h("div", { class: "muted small" }, "Your words and progress are saved in this browser on this computer."),
           h("div", { class: "muted small" }, "Translate uses the SBL Greek New Testament (SBLGNT, Society of Biblical Literature and Logos Bible Software) with MorphGNT parsing (CC BY-SA), glosses from the Dodson Greek Lexicon (public domain), and the Montserrat font (SIL Open Font License). Practice sentences by Prof. Andrew Swygard, used with permission."),
           h("button", { class: "btn", onclick: () => { O.set("hasSeenWelcome", false); render(); } }, "Show the welcome guide again")),
