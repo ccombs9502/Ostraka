@@ -988,7 +988,7 @@
         h("div", { class: "card pad stack" }, h("b", null, "About"),
           h("div", { class: "row" }, "Version", h("span", { class: "spacer" }), h("span", { class: "muted" }, "Ostraka Web 11")),
           h("div", { class: "muted small" }, "Your words and progress are saved in this browser on this computer."),
-          h("div", { class: "muted small" }, "Translate uses the SBL Greek New Testament (SBLGNT, Society of Biblical Literature and Logos Bible Software) with MorphGNT parsing (CC BY-SA), glosses from the Dodson Greek Lexicon (public domain), and the Montserrat font (SIL Open Font License)."),
+          h("div", { class: "muted small" }, "Translate uses the SBL Greek New Testament (SBLGNT, Society of Biblical Literature and Logos Bible Software) with MorphGNT parsing (CC BY-SA), glosses from the Dodson Greek Lexicon (public domain), and the Montserrat font (SIL Open Font License). Practice sentences by Prof. Andrew Swygard, used with permission."),
           h("button", { class: "btn", onclick: () => { O.set("hasSeenWelcome", false); render(); } }, "Show the welcome guide again")),
         h("div", { class: "card pad stack" },
           h("button", { class: "btn red", onclick: () => { if (confirm("Reset all progress? Your words, chapters and groups stay.")) { O.resetProgress(); render(); } } }, "Reset all progress"),

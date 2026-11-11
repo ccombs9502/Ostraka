@@ -15,5 +15,6 @@ Words, sentences and progress are saved on your own device. Add your own vocabul
 ## Credits
 - Greek New Testament text: SBL Greek New Testament (SBLGNT), Society of Biblical Literature and Logos Bible Software.
 - Parsing and lemmas: MorphGNT (CC BY-SA 3.0), https://github.com/morphgnt/sblgnt
+- Practice sentences (Translate, Chapters 2–24): written by Prof. Andrew Swygard, used with permission
 - English glosses: Dodson Greek Lexicon (public domain).
 - Font: Montserrat (SIL Open Font License, see fonts/OFL.txt).

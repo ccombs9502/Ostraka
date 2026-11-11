@@ -15,6 +15,12 @@
       if (d[k] == null) d[k] = v;
     const defaults = { tLabelsFull: true, tLinkArticles: true, tNotesFull: false, tShowStructure: false, tDir: "g2e", tSkelAdvanced: false };
     for (const [k, v] of Object.entries(defaults)) if (d.settings[k] == null) d.settings[k] = v;
+    // Preload Prof. Swygard's practice sentences once (sorted into Chapter
+    // groups). Sentences already in the Library just pick up his glosses.
+    const P = window.OSTRAKA_PRACTICE;
+    if (P && (d.settings.tPracticeVersion || 0) < P.version) {
+      try { T.addSentences(E.parseSentences(P.text), true); d.settings.tPracticeVersion = P.version; O.save(); } catch (e) { console.warn("practice preload", e); }
+    }
   };
   const tr = { tab: "practice", scope: ["all"], lib: { filter: "all", chapter: "all", group: "all", q: "", select: false, sel: [] }, imp: { text: "", chapters: null, groupByChapter: true, addTo: "" }, type: { text: "", picks: {} } };
   T.session = null;
