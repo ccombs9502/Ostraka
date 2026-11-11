@@ -3,6 +3,11 @@
   "use strict";
   const O = window.O;
   O.load();
+  if (O.embedded) {
+    document.documentElement.classList.add("embed");
+    // The app prints (Show work → Download PDF) with its own print panel.
+    window.print = () => O.post({ type: "print" });
+  }
   const S = O.data.settings;
 
   // ---------- Tiny DOM helper ----------
@@ -49,7 +54,7 @@
 
   // ---------- App state ----------
   const st = {
-    section: "home",
+    section: O.embedded ? "translate" : "home",
     paradigmPractice: false,
     session: null,   // { kind, title, ... }
     modal: null,     // render function for an overlay

@@ -167,18 +167,29 @@
     },
   });
 
+  // Inside the Mac/iPhone app, the page is told so by window.OSTRAKA_EMBED: data
+  // comes from the app (not browser storage), saves go back to the app, and
+  // the app's own vocabulary is used to check meanings.
+  const EMB = window.OSTRAKA_EMBED || null;
+  O.embedded = !!EMB;
+  const embedCards = (list) => (list || []).map((c, i) => ({ id: "app" + i, greek: c.greek || "", gloss: c.gloss || "", chapter: c.chapter ?? null }));
+  const post = (msg) => { try { window.webkit.messageHandlers.ostraka.postMessage(msg); } catch (e) {} };
+  O.post = post;
+  O.setCards = (list) => { if (O.data) O.data.cards = embedCards(list); };
   O.load = () => {
     let d = defaults();
     try {
-      const raw = localStorage.getItem(KEY);
+      const raw = EMB ? EMB.data : localStorage.getItem(KEY);
       if (raw) {
         const saved = JSON.parse(raw);
         d = { ...d, ...saved, settings: { ...d.settings, ...(saved.settings || {}) } };
       }
     } catch (e) { O.loadError = "Couldn't read saved data in this browser."; }
+    if (EMB) { d.cards = embedCards(EMB.cards); d.settings.hasSeenWelcome = true; }
     O.data = d;
   };
   O.save = () => {
+    if (EMB) { post({ type: "save", json: JSON.stringify(O.data) }); return; }
     try { localStorage.setItem(KEY, JSON.stringify(O.data)); }
     catch (e) { O.loadError = "Couldn't save. Your browser may be blocking storage."; }
   };

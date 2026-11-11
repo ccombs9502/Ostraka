@@ -536,3 +536,7 @@ button.t-st.go:hover { box-shadow: 0 0 0 1px var(--accent); }
 .t-chcard.done .t-chbar i { background: var(--ok); }
 @media (max-width: 600px) { .t-chgrid { grid-template-columns: repeat(2, 1fr); } }
 .t-pnote { font-size: 12.5px; font-style: italic; padding: 2px 8px; border-radius: 999px; background: var(--hl); }
+/* Inside the Mac/iPhone app: only Translate, no web sidebar or tab bar */
+html.embed .side, html.embed .tabs { display: none !important; }
+html.embed .shell { height: 100vh; }
+html.embed .main { padding-bottom: 0; }
