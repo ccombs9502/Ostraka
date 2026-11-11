@@ -525,3 +525,14 @@ button.t-st.go:hover { box-shadow: 0 0 0 1px var(--accent); }
   .t-onum { min-width: 16px; height: 16px; font-size: 10px; top: -7px; left: -5px; }
   .t-guide { font-size: 13px; padding: 8px 10px; }
 }
+/* Practice by chapter */
+.t-chgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.t-chcard { text-align: left; padding: 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); color: inherit; font: inherit; cursor: pointer; display: flex; flex-direction: column; gap: 6px; }
+.t-chcard:hover { border-color: var(--accent); }
+.t-chcard.last { box-shadow: 0 0 0 2px var(--accent); }
+.t-chn { font-weight: 700; }
+.t-chbar { height: 6px; border-radius: 3px; background: var(--accent-soft); overflow: hidden; }
+.t-chbar i { display: block; height: 100%; background: var(--accent); border-radius: 3px; }
+.t-chcard.done .t-chbar i { background: var(--ok); }
+@media (max-width: 600px) { .t-chgrid { grid-template-columns: repeat(2, 1fr); } }
+.t-pnote { font-size: 12.5px; font-style: italic; padding: 2px 8px; border-radius: 999px; background: var(--hl); }

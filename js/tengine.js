@@ -266,7 +266,20 @@
       if (m[1] != null) {
         const inner = m[1].trim();
         const prev = [...tokens].reverse().find((t) => !t.gap);
-        if (inner && LATIN.test(inner) && prev) prev.given = inner;
+        if (inner && LATIN.test(inner) && prev) {
+          // "(king, nominative)": "king" is the given meaning, "nominative" is a
+          // grammar note. "(genitive)" alone is only a note, so the word is
+          // still parsed. Greek inside the note ("παιδίον, child") is dropped.
+          const parts = inner.split(/\s*[,;]\s*/).filter(Boolean);
+          const GRAM = /^(nominative|genitive|dative|accusative|vocative)$/i;
+          const gram = parts.filter((x) => GRAM.test(x));
+          const rest = parts.filter((x) => !GRAM.test(x) && LATIN.test(x) && !/[Ͱ-Ͽἀ-῿]/.test(x));
+          if (rest.length) prev.given = rest.join(", ");
+          // A note that isn't a translation ("superlative of μικρός") is shown
+          // as the professor's note; the word is still parsed.
+          if (gram.length) prev.note = gram[0].toLowerCase();
+          else if (!rest.length) prev.note = inner;
+        }
       } else if (m[2]) tokens.push({ w: "…", gap: true, post: "" });
       else if (m[3]) {
         const w = m[3].normalize("NFC").replace(/[’᾽ʼ']/g, "’");

@@ -143,6 +143,7 @@
     };
     const s = S();
     return [
+      chapterCards(),
       h("div", { class: "card pad stack" },
         h("div", { style: "font-size:21px;font-weight:700" }, "Translate sentences"),
         h("div", { class: "muted" }, "Parse each word, build the skeleton, then write the whole sentence. Works the way you translate by hand."),
@@ -165,6 +166,28 @@
         h("button", { class: "btn", onclick: () => { tr.tab = "import"; render(); } }, "Import sentences"),
         h("button", { class: "btn", onclick: () => { tr.tab = "library"; render(); } }, "Open Library")),
     ];
+  }
+  // Chapters in order, each with how many you've done (in the direction chosen
+  // in Practice) and a Continue button that picks up at the first one not done.
+  function chapterCards() {
+    const d = O.data, dir = S().tDir;
+    const chapters = d.sentenceGroups.map((g) => ({ g, m: /^chapter\s+(\d+)$/i.exec(g.name.trim()) })).filter((x) => x.m)
+      .map((x) => ({ g: x.g, n: +x.m[1], ids: x.g.ids.filter((id) => byId(id)) })).filter((c) => c.ids.length).sort((a, b) => a.n - b.n);
+    if (!chapters.length) return null;
+    const last = d.settings.tLastChapter;
+    const card = (c) => {
+      const done = c.ids.filter((id) => lastResult(id, dir)).length, total = c.ids.length, all = done === total;
+      const todo = c.ids.filter((id) => !lastResult(id, dir));
+      const go = () => { O.set("tLastChapter", c.n); T.start(all ? c.ids : todo, dir, "Chapter " + c.n); };
+      return h("button", { class: "t-chcard" + (all ? " done" : "") + (last === c.n ? " last" : ""), onclick: go, title: all ? "Practice this chapter again" : "Continue at sentence " + (c.ids.indexOf(todo[0]) + 1) },
+        h("div", { class: "t-chn" }, "Chapter " + c.n),
+        h("div", { class: "t-chbar" }, h("i", { style: `width:${Math.round((done / total) * 100)}%` })),
+        h("div", { class: "small muted" }, all ? "✓ All " + total + " done" : done ? `${done} of ${total} · Continue` : `${total} sentences · Start`));
+    };
+    return h("div", { class: "card pad stack" },
+      h("div", { class: "row" }, h("b", { style: "font-size:17px" }, "Practice by chapter"), h("span", { class: "spacer" }),
+        h("span", { class: "muted small" }, dir === "e2g" ? "English → Greek" : "Greek → English")),
+      h("div", { class: "t-chgrid" }, chapters.map(card)));
   }
   const emptyLibrary = () => h("div", { class: "card pad stack center" },
     h("div", { style: "font-size:20px;font-weight:700" }, "No sentences yet"),
@@ -477,6 +500,12 @@
       ans: units.map((u) => ({ f: {}, ok: {}, done: !!u.given, tries: 0, missed: false, hl: false, skip: false })),
       help: { hints: 0, charts: 0, structure: false, seen: {} }, start: Date.now(), lines: {}, hint: null,
       outline: null, order: null, skelSkipped: false, english: "", englishResult: null, greekText: "", greekResult: null, notes,
+    });
+    // A professor's case note ("genitive") fills in the case to start with.
+    units.forEach((u, n) => {
+      const note = !u.given && s.tokens[u.head] && s.tokens[u.head].note;
+      const code = note && { nominative: "N", genitive: "G", dative: "D", accusative: "A", vocative: "V" }[note];
+      if (code) ss.ans[n].f.case = code;
     });
     ss.cur = ss.ans.findIndex((a) => !a.done);
     if (ss.cur < 0) ss.phase = "parsed";
@@ -1102,7 +1131,9 @@
     return h("div", { class: "card pad t-work" + ap("twork", ss.ids[ss.i] + "|" + n) },
       h("div", { class: "row wrap" }, h("span", { class: "muted" }, e2g ? "Now building" : "Now parsing"),
         h("span", { class: e2g ? "t-now-en" : "t-now-gk", style: "color:" + c }, e2g ? cueFor(u, n) : u.greek),
-        u.article ? h("span", { class: "muted small" }, "with its article") : null, h("span", { class: "spacer" }),
+        u.article ? h("span", { class: "muted small" }, "with its article") : null,
+        ss.s.tokens[u.head] && ss.s.tokens[u.head].note ? h("span", { class: "t-pnote" }, "Professor's note: " + ss.s.tokens[u.head].note) : null,
+        h("span", { class: "spacer" }),
         noKey ? h("span", { class: "t-tag warn" }, "No answer key for this word · check it yourself") : null),
       rows,
       h("div", { class: "row wrap", style: "margin-top:12px" },
