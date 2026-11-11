@@ -491,3 +491,37 @@ canvas.draw { width: 100%; aspect-ratio: 1.6; background: var(--card); border-ra
 .t-dirpick b { font-size: 17px; }
 .t-dirpick:hover, .t-dirpick.last { border-color: var(--accent); }
 .t-dirpick.last { box-shadow: 0 0 0 1px var(--accent); }
+/* Case 2: forms that could be two cases */
+.t-field.t-case2 { background: var(--hl); border-radius: 12px; padding: 6px 8px; margin-left: -8px; }
+.t-field.t-case2 .lbl { font-weight: 700; }
+.t-fpill.t-case2 { background: var(--hl); }
+.t-c2note { display: block; font-size: 11px; font-weight: 500; text-transform: none; letter-spacing: 0; opacity: .8; }
+.t-c2note.plain { opacity: .6; }
+.t-ps .t-c2 { background: var(--hl); border-radius: 4px; padding: 0 3px; }
+/* Simple skeleton: words in order, left to right */
+.t-orderline { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-start; min-height: 74px; padding: 10px; border: 2px dashed var(--line); border-radius: 14px; }
+.t-orderline.ok { border-style: solid; border-color: var(--ok); }
+.t-orderline.sugg { border-style: solid; opacity: .85; }
+.t-oslot { position: relative; cursor: pointer; border-radius: 11px; }
+.t-oslot[draggable] { cursor: grab; }
+.t-oslot.bad .t-pc { box-shadow: 0 0 0 2px var(--bad); }
+.t-onum { position: absolute; top: -8px; left: -6px; z-index: 1; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 9px; background: var(--accent); color: #fff; font-size: 11px; font-weight: 700; display: grid; place-items: center; }
+.t-oslot.dz-l .t-pc { box-shadow: -3px 0 0 var(--accent); }
+.t-oslot.dz-r .t-pc { box-shadow: 3px 0 0 var(--accent); }
+button.t-st { border: 0; font: inherit; font-size: 13px; cursor: pointer; }
+button.t-st.go:hover { box-shadow: 0 0 0 1px var(--accent); }
+.t-qmark { width: 20px; height: 20px; border-radius: 50%; border: 1px solid var(--line); background: var(--card); color: var(--muted); font: 700 12px/1 inherit; cursor: pointer; padding: 0; vertical-align: middle; }
+.t-qmark:hover { color: var(--accent); border-color: var(--accent); }
+.t-khelp { padding: 8px 0; border-bottom: 1px solid var(--line); line-height: 1.4; }
+.t-khelp:last-of-type { border-bottom: 0; }
+.t-khelp .greekish { font-family: var(--greek), serif; font-size: 14px; margin-top: 2px; }
+/* Order skeleton on phones: smaller pieces so more fit per row */
+@media (max-width: 600px) {
+  .t-tray, .t-orderline { gap: 7px; padding: 8px; }
+  .t-orderline { gap: 10px 7px; min-height: 60px; }
+  .t-pc { padding: 4px 7px; }
+  .t-tray .t-pc-gk, .t-orderline .t-pc-gk { font-size: 17px; }
+  .t-tray .t-pc-tx, .t-orderline .t-pc-tx { font-size: 11px; }
+  .t-onum { min-width: 16px; height: 16px; font-size: 10px; top: -7px; left: -5px; }
+  .t-guide { font-size: 13px; padding: 8px 10px; }
+}

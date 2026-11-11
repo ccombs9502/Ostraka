@@ -13,7 +13,7 @@
     const d = O.data;
     for (const [k, v] of Object.entries({ sentences: [], sentenceGroups: [], tResults: {}, tNotes: {}, tWork: {}, sentencePresets: [], pinnedSentences: [], pinnedSentenceGroups: [], tDays: [] }))
       if (d[k] == null) d[k] = v;
-    const defaults = { tLabelsFull: true, tLinkArticles: true, tNotesFull: false, tShowStructure: false, tDir: "g2e" };
+    const defaults = { tLabelsFull: true, tLinkArticles: true, tNotesFull: false, tShowStructure: false, tDir: "g2e", tSkelAdvanced: false };
     for (const [k, v] of Object.entries(defaults)) if (d.settings[k] == null) d.settings[k] = v;
   };
   const tr = { tab: "practice", scope: ["all"], lib: { filter: "all", chapter: "all", group: "all", q: "", select: false, sel: [] }, imp: { text: "", chapters: null, groupByChapter: true, addTo: "" }, type: { text: "", picks: {} } };
@@ -147,7 +147,8 @@
         h("div", { class: "label" }, "3 · Options"),
         h("div", { class: "stack", style: "gap:8px" },
           toggle(s.tLinkArticles, "Link articles automatically", (v) => { O.set("tLinkArticles", v); render(); }, "Good for beginners: each article comes joined to its noun."),
-          toggle(s.tShowStructure, "Show structure", (v) => { O.set("tShowStructure", v); render(); }, "Starts the skeleton with the outline filled in. Counts as help."),
+          toggle(s.tShowStructure, "Show structure", (v) => { O.set("tShowStructure", v); render(); }, "Starts the skeleton already filled in. Counts as help."),
+          toggle(s.tSkelAdvanced, "Advanced skeleton", (v) => { O.set("tSkelAdvanced", v); render(); }, "Build an indented outline and name each phrase (verb, subject, object…) instead of just putting the words in order."),
           h("div", { class: "row wrap" }, h("span", null, "Labels"), seg([["full", "Full words"], ["short", "Short"]], s.tLabelsFull ? "full" : "short", (v) => { O.set("tLabelsFull", v === "full"); render(); }),
             h("span", { style: "margin-left:12px" }, "Notes"), seg([["folded", "Folded"], ["full", "Full"]], s.tNotesFull ? "full" : "folded", (v) => { O.set("tNotesFull", v === "full"); render(); }))),
         h("div", { class: "row", style: "margin-top:8px" },
@@ -469,7 +470,7 @@
       s, units, colors: units.map((u, n) => pal[n % pal.length]), phase: "parse",
       ans: units.map((u) => ({ f: {}, ok: {}, done: !!u.given, tries: 0, missed: false, hl: false, skip: false })),
       help: { hints: 0, charts: 0, structure: false, seen: {} }, start: Date.now(), lines: {}, hint: null,
-      outline: null, english: "", englishResult: null, greekText: "", greekResult: null, notes,
+      outline: null, order: null, skelSkipped: false, english: "", englishResult: null, greekText: "", greekResult: null, notes,
     });
     ss.cur = ss.ans.findIndex((a) => !a.done);
     if (ss.cur < 0) ss.phase = "parsed";
@@ -492,7 +493,14 @@
   // Which steps a unit has, in order.
   function stepsFor(u) {
     if (T.session.dir === "e2g") return ["kind", "lex", "parse", "form"];
-    return noLex(u) ? ["kind", "mean", "parse", "ctx"] : ["kind", "lex", "mean", "parse", "ctx"];
+    return ["kind", "lex", "mean", "parse", "ctx"].filter((k) => !(k === "lex" && noLex(u)) && !(k === "mean" && noMean(u)));
+  }
+  // A preposition's meaning depends on the case it takes, so it only gets
+  // "In this sentence", after the case is chosen.
+  function noMean(u) {
+    if (T.session.dir === "e2g" || u.given) return false;
+    const forms = unitForms(u);
+    return forms.length > 0 && forms.every((f) => E.posName(f.pos) === "Preposition");
   }
   // Words that never change form (οὖν, καί, ἐν, οὐ…) are already their own
   // dictionary form, so there's no lexical-form question for them.
@@ -503,16 +511,37 @@
   function noLex(u) {
     if (T.session.dir === "e2g" || u.given) return false;
     const forms = unitForms(u);
-    return forms.length > 0 && forms.every((f) => ["Conjunction", "Preposition", "Adverb", "Particle"].includes(E.posName(f.pos)) && E.fw(f.lemma) === E.fw(u.greek));
+    if (!forms.length) return false;
+    // An article on its own (e.g. before a given noun) is always ὁ.
+    if (!u.article && forms.every((f) => E.posName(f.pos) === "Article")) return true;
+    // Pronouns: no lexical-form question (Charlie's call, Web 12).
+    if (forms.every((f) => E.posName(f.pos) === "Pronoun")) return true;
+    return forms.every((f) => ["Conjunction", "Preposition", "Adverb", "Particle"].includes(E.posName(f.pos)) && E.fw(f.lemma) === E.fw(u.greek));
   }
   function fieldsNow(u, a) {
     const kind = a.f.kind || unitKind(u);
     const f = unitForms(u)[0];
-    return E.fieldsFor(kind, a.f.mood, f ? f.parse : null);
+    const fields = E.fieldsFor(kind, a.f.mood, f ? f.parse : null);
+    // A form that could be two cases asks for both: "Case" (the one in this
+    // sentence) and a highlighted "Case 2" (the other one it could be).
+    const ci = fields.indexOf("case");
+    if (ci >= 0 && T.session.dir !== "e2g" && caseSet(u).length > 1) fields.splice(ci + 1, 0, "case2");
+    const gi = fields.indexOf("gender");
+    if (gi >= 0 && T.session.dir !== "e2g" && genderSet(u).length > 1) fields.splice(gi + 1, 0, "gender2");
+    return fields;
+  }
+  function genderSet(u) {
+    const f = unitForms(u)[0];
+    return f ? E.genderOptions(T.session.s.tokens[u.head].w, f) : [];
+  }
+  function caseSet(u) {
+    const f = unitForms(u)[0];
+    return f ? E.caseOptions(T.session.s.tokens[u.head].w, f) : [];
   }
   function parseLabel(u, a, onlyOk) {
     const fields = fieldsNow(u, a);
-    return E.parseLabel(fields, (fl) => (!onlyOk || a.ok["p:" + fl] ? a.f[fl] : null), labelsFull());
+    const lab = E.parseLabel(fields, (fl) => (!onlyOk || a.ok["p:" + fl] ? a.f[fl] : null), labelsFull());
+    return a.f.kind === "Preposition" ? ("Prep " + lab).trim() : lab;
   }
 
   // Check every filled answer for the current unit.
@@ -528,8 +557,12 @@
     for (const step of stepsFor(u)) {
       if (step === "kind") mark("kind", !!a.f.kind && (noKey || forms.some((f) => E.posName(f.pos) === a.f.kind)));
       if (step === "lex") {
-        const v = E.fw(a.f.lex || "");
-        mark("lex", !!v && (noKey || forms.some((f) => E.fw(f.lemma) === v) || (u.article && forms.some((f) => v === E.fw("ὁ " + f.lemma)))));
+        // Accents and breathing marks don't matter, and an article in front
+        // ("ἡ ἡμέρα") or a vocab-list tail ("ἡμέρα, -ας, ἡ") is fine too.
+        const words = (a.f.lex || "").split(",")[0].trim().split(/\s+/).filter(Boolean);
+        if (words.length > 1 && ["ο", "η", "το"].includes(E.fw(words[0]))) words.shift();
+        const v = E.fw(words.join(" "));
+        mark("lex", !!v && (noKey || forms.some((f) => E.fw(f.lemma) === v)));
       }
       if (step === "mean") {
         const gl = forms.length ? E.gloss(forms[0].lemma) : "";
@@ -540,7 +573,9 @@
         if (!fields.length) { a.ok.parse = true; continue; }
         let all = true;
         for (const fl of fields) {
-          const ok = !!a.f[fl] && (noKey || forms.some((f) => E.checkField(fl, a.f[fl], f.parse, fl === "takes" ? unitTakes(u) : null)));
+          const ok = fl === "case2" ? !!a.f.case2 && a.f.case2 !== a.f.case && caseSet(u).includes(a.f.case2) :
+            fl === "gender2" ? !!a.f.gender2 && a.f.gender2 !== a.f.gender && genderSet(u).includes(a.f.gender2) :
+            !!a.f[fl] && (noKey || forms.some((f) => E.checkField(fl, a.f[fl], f.parse, fl === "takes" ? unitTakes(u) : null)));
           a.ok["p:" + fl] = !!ok; if (!ok) all = false;
         }
         mark("parse", all);
@@ -563,6 +598,32 @@
     if (!allOk) { a.missed = true; render(); return; }
     a.done = true; a.skip = false; ss.hint = null;
     advance();
+  }
+  // Tap any word to work on it, including one you already finished. A
+  // finished word reopens with your answers kept; Check it again to finish.
+  const KIND_HELP = [
+    ["Verb", "Shows an action or a state: what someone does or is. It has tense, voice, mood, person and number.", "λέγει “he says”, ἦν “was”, ἀκούων “hearing”"],
+    ["Noun", "Names a person, place, thing or idea. It has case, number and a fixed gender.", "λόγος “word”, θεός “God”, ἡμέρα “day”"],
+    ["Article", "The word “the”. It matches its noun in case, number and gender, which helps you identify the noun.", "ὁ, ἡ, τό, τοῦ, τῷ, τόν"],
+    ["Pronoun", "Stands in for a noun so it doesn't have to be repeated: I, you, he, this, who.", "ἐγώ “I”, σύ “you”, αὐτός “he/it”, οὗτος “this”, ὅς “who”"],
+    ["Adjective", "Describes a noun, or stands in for one (“the good”). It matches its noun in case, number and gender.", "ἀγαθός “good”, πᾶς “all, every”, ἅγιος “holy”"],
+    ["Preposition", "A small word that links a noun to the rest of the sentence: in, into, from, with. The case of its object changes the meaning.", "ἐν “in”, εἰς “into”, ἀπό “from”, μετά “with/after”"],
+    ["Conjunction", "Joins words, phrases or sentences.", "καί “and”, δέ “but, and”, γάρ “for”, ἀλλά “but”, ὅτι “that, because”"],
+    ["Adverb", "Tells how, when or where something happens. It doesn't change form.", "νῦν “now”, οὕτως “thus”, ὧδε “here”, οὐ “not”"],
+    ["Particle", "A small word that adds emphasis or a shade of meaning.", "ἄν, γε, ἰδού “behold”"],
+  ];
+  function kindHelp(e) {
+    if (e) e.stopPropagation();
+    openModal(() => h("div", { class: sheetClass(), style: "width:min(560px,100%)" }, h("div", { class: "body stack" },
+      h("div", { style: "font-size:20px;font-weight:700" }, "What kind of word is it?"),
+      KIND_HELP.filter(([k]) => E.KINDS.includes(k)).map(([k, d, ex]) => h("div", { class: "t-khelp" }, h("b", null, k), h("div", null, d), h("div", { class: "muted small greekish" }, ex))),
+      h("button", { class: "btn pri", onclick: closeModal }, "Got it"))));
+  }
+  function openWord(n) {
+    const ss = T.session, a = ss.ans[n];
+    if (a.done) { a.done = false; a.reopened = true; a.ok = {}; a.open = {}; a.closed = {}; a.missed = false; }
+    ss.cur = n; ss.hint = null; ss.phase = "parse";
+    render();
   }
   function advance() {
     const ss = T.session;
@@ -623,6 +684,8 @@
         `Look at the ending: -${ending}. The Charts button shows the chart it comes from.`;
       const fl = fields.find((x) => !a.ok["p:" + x]) || fields[0];
       if (!fl) return "This word has nothing to parse.";
+      if (fl === "gender2") { const other = genderSet(u).filter((x) => x !== f.parse[6]); return `Gender 2: this form could also be ${other.map((x) => E.optLabel("gender", x, true)).join(" or ")}.`; }
+      if (fl === "case2") { const other = caseSet(u).filter((x) => x !== f.parse[4]); return `Case 2: this form could also be ${other.map((x) => E.optLabel("case", x, true)).join(" or ")}.`; }
       if (fl === "takes") { const t = unitTakes(u); return t ? `It takes the ${E.optLabel("takes", t, true)}.` : "Check the word after it."; }
       return `${E.FIELDS[fl].name}: ${E.optLabel(fl, f.parse[E.FIELDS[fl].i], true)}.`;
     }
@@ -650,7 +713,8 @@
     let body, title;
     if (ss.hint.general) {
       title = "Hint";
-      body = ss.phase === "skeleton" ? "Find the verb first and put it at the top. Then ask: who does it (nominative), what receives it (accusative), and which phrases start with a preposition. Indent each phrase under the word it describes." :
+      body = ss.phase === "skeleton" && ss.order ? (ss.dir === "e2g" ? "Keep each preposition right before its noun, put δέ, γάρ and οὖν second, and keep οὐ right before the word it makes negative." : "Start with who is doing the action (the nominative), then the verb, then what receives it (the accusative). Keep each preposition right before its noun, and put “of …” words right after the word they describe.") :
+        ss.phase === "skeleton" ? "Find the verb first and put it at the top. Then ask: who does it (nominative), what receives it (accusative), and which phrases start with a preposition. Indent each phrase under the word it describes." :
         "Use the outline: start with the verb, then its subject and object, then the phrases. Read your word-by-word line for the meanings.";
     } else {
       const u = ss.units[ss.hint.u], a = ss.ans[ss.hint.u];
@@ -727,11 +791,15 @@
         hintPop(), settingsPop()));
     let main;
     if (ss.phase === "parse" || ss.phase === "parsed") main = parseScreen();
-    else if (ss.phase === "skeleton") main = skeletonScreen();
+    else if (ss.phase === "skeleton") main = ss.order ? orderScreen() : skeletonScreen();
     else main = finalScreen();
     const el = h("div", { class: "session" }, head,
       h("div", { class: "s-body" }, h("div", { class: "s-inner t-inner" + ap("tsent", ss.ids[ss.i] + "|" + ss.phase) },
-        h("div", { class: "t-steps" }, stepNames.map((n, i) => h("span", { class: "t-st" + (i === phaseIdx ? " on" : i < phaseIdx ? " done" : "") }, i < phaseIdx ? "✓ " + n : `${i + 1} · ${n}`))),
+        h("div", { class: "t-steps" }, stepNames.map((n, i) => {
+          const can = i !== phaseIdx && canGo(i);
+          return h(can ? "button" : "span", { class: "t-st" + (i === phaseIdx ? " on" : i < phaseIdx ? " done" : "") + (can ? " go" : ""), title: can ? "Go to this step. Your work is kept." : null, onclick: can ? () => goStep(i) : null },
+            i < phaseIdx ? "✓ " + n : `${i + 1} · ${n}`);
+        })),
         main)));
     requestAnimationFrame(() => { fitLines(); drawArrows(); });
     return el;
@@ -810,12 +878,14 @@
     const chosen = fields.filter((fl) => a.f[fl]);
     if (fields.length && (chosen.length && (cur || a.ok.parse))) {
       const bits = [];
+      if (a.f.kind === "Preposition") bits.push(h("span", { class: a.ok.kind === false ? "wrong" : "" }, "Prep "));
       fields.forEach((fl, i) => {
         const v = a.f[fl];
         const lab = v ? (fl === "takes" ? "+ " : "") + E.optLabel(fl, v, labelsFull()) : "___";
         const joinPN = fl === "number" && fields[i - 1] === "person";
-        if (i) bits.push(joinPN ? " " : ", ");
-        bits.push(h("span", { class: a.ok["p:" + fl] === false ? "wrong" : a.ok["p:" + fl] ? "" : "pend" }, lab));
+        const two = fl === "case2" || fl === "gender2";
+        if (i) bits.push(joinPN ? " " : two ? " / " : ", ");
+        bits.push(h("span", { class: (a.ok["p:" + fl] === false ? "wrong" : a.ok["p:" + fl] ? "" : "pend") + (two ? " t-c2" : "") }, lab));
       });
       parts.push(h("div", { class: "t-hr", style: "background:" + c }), h("div", { class: "t-ps" }, bits));
     } else if (!fields.length && a.f.kind && (cur || a.ok.kind)) parts.push(h("div", { class: "t-hr", style: "background:" + c }), h("div", { class: "t-ps" + st("kind") }, a.f.kind));
@@ -868,7 +938,7 @@
           const full = cur || S().tNotesFull || ss.lines[li] === "open";
           const word = h("div", { class: "t-w" + (u.given ? " given" : a.done ? " done" : cur ? " cur" : " pend") + (a.hl ? " hl" : ""), "data-u": n },
             h("div", { class: "t-wd" },
-              h("div", { class: e2g ? "t-en" : "t-gk", onclick: !u.given && !cur && ss.phase === "parse" ? () => { ss.cur = n; ss.hint = null; render(); } : null }, unitWord(u) + (e2g ? "" : postOf(u))),
+              h("div", { class: e2g ? "t-en" : "t-gk", onclick: !u.given && !cur && (ss.phase === "parse" || ss.phase === "parsed") ? () => openWord(n) : null }, unitWord(u) + (e2g ? "" : postOf(u))),
               h("div", { class: "t-br", style: u.given ? "" : a.done || cur ? "border-color:" + c : "" })),
             cur ? h("div", { class: "t-live" }, stack(u, n, true)) : stack(u, n, full),
             a.skip && !a.done ? h("div", { class: "t-tagw" }, "↷ Skipped") : null,
@@ -923,8 +993,10 @@
     if (ss.phase === "parsed") {
       return [sentenceCard(), h("div", { class: "t-grid" },
         h("div", { class: "card pad row", style: "gap:14px" }, h("span", { class: "t-ok big" }, "✓"),
-          h("div", { style: "flex:1" }, h("b", { style: "font-size:17px" }, "Every word is " + (ss.dir === "e2g" ? "built." : "parsed.")), h("div", { class: "muted" }, "Next, put the pieces into the skeleton.")),
-          h("button", { class: "btn pri big", "data-autofocus": "", onclick: startSkeleton }, "Build the skeleton →")), side)];
+          h("div", { style: "flex:1" }, h("b", { style: "font-size:17px" }, "Every word is " + (ss.dir === "e2g" ? "built." : "parsed.")), h("div", { class: "muted" }, "Next, put the pieces into the skeleton. Tap any word above to change it.")),
+          h("div", { class: "stack", style: "gap:6px;align-items:flex-end" },
+            h("button", { class: "btn pri big", "data-autofocus": "", onclick: () => startSkeleton() }, "Build the skeleton →"),
+            h("button", { class: "btn link", onclick: skipSkeleton }, "Skip the skeleton"))), side)];
     }
     return [sentenceCard(), h("div", { class: "t-grid" }, workspace(), side)];
   }
@@ -938,7 +1010,7 @@
         const a = ss.ans[n], c = ss.colors[n];
         return h("div", { class: "t-key" }, h("span", { class: "t-keydot", style: "background:" + c }),
           h("div", null, h("div", { class: e2g ? "t-key-en" : "greek t-key-gk", style: "color:" + c }, e2g ? cueFor(u, n) : u.greek),
-            a.done ? h("div", { class: "small" }, a.f.kind + (fieldsNow(u, a).length ? " · " + parseLabel(u, a) : "") + (e2g ? " · " : ""), e2g ? h("span", { class: "greek" }, u.greek) : null) :
+            a.done ? h("div", { class: "small" }, (a.f.kind === "Preposition" ? parseLabel(u, a) : a.f.kind + (fieldsNow(u, a).length ? " · " + parseLabel(u, a) : "")) + (e2g ? " · " : ""), e2g ? h("span", { class: "greek" }, u.greek) : null) :
               h("div", { class: "small muted" }, "🔒 Parse to Reveal")));
       }),
       h("div", { class: "muted small", style: "margin-top:8px" }, "Colors are random. Labels unlock as you parse."));
@@ -956,7 +1028,7 @@
       h("div", { class: "t-k" }, okMark(k), label),
       h("button", { class: "t-cval" + (valueClass ? " " + valueClass : ""), style: "color:" + c, onclick: () => { a.open[k] = true; delete a.closed[k]; render(); } }, value, h("span", { class: "t-edit" }, "✎")));
     const isCompact = (k, filled, needsClose) => filled && !a.open[k] && a.ok[k] !== false && (!needsClose || a.closed[k]);
-    const order = e2g ? ["lex", "form"] : noLex(u) ? ["mean", "ctx"] : ["lex", "mean", "ctx"];
+    const order = e2g ? ["lex", "form"] : ["lex", "mean", "ctx"].filter((k) => !(k === "lex" && noLex(u)) && !(k === "mean" && noMean(u)));
     const focusNext = (from) => {
       const later = order.slice(order.indexOf(from) + 1).find((k) => !(a.f[k] || "").trim());
       if (later) { a.open[later] = true; render(); return; }
@@ -969,7 +1041,7 @@
 
     // What is it?
     if (isCompact("kind", !!a.f.kind)) rows.push(compactRow("kind", "What is it?", a.f.kind));
-    else rows.push(row("kind", "What is it?", h("div", { class: "chips" }, E.KINDS.map((k) => h("button", {
+    else rows.push(row("kind", h("span", null, "What is it? ", h("button", { class: "t-qmark", title: "What do these mean?", onclick: kindHelp }, "?")), h("div", { class: "chips" }, E.KINDS.map((k) => h("button", {
       class: "chip t-chip" + (a.f.kind === k ? " sel" : "") + (a.ok.kind === false && a.f.kind === k ? " wrong" : ""), style: a.f.kind === k ? "color:" + c : "",
       onclick: () => { const changed = a.f.kind !== k; a.f.kind = k; delete a.ok.kind; delete a.open.kind; if (changed) { delete a.ok.parse; } render(); },
     }, k)))));
@@ -982,7 +1054,7 @@
       h("span", { class: "muted small" }, "the form you'd look up")));
 
     // Meaning
-    if (!e2g) {
+    if (!e2g && !noMean(u)) {
       if (isCompact("mean", (a.f.mean || "").trim(), true)) rows.push(compactRow("mean", "Meaning", a.f.mean));
       else rows.push(row("mean", "Meaning", textIn({ value: a.f.mean || "", placeholder: "dictionary meaning", autofocus: af("mean") || a.open.mean, oninput: (v) => { a.f.mean = v; delete a.ok.mean; a.override = false; refreshLive(); }, onenter: enterText("mean") }),
         a.ok.mean === false && (a.f.mean || "").trim() ? h("button", { class: "btn link", onclick: () => { a.override = true; a.ok.mean = true; render(); } }, "✓ I was right, count it") : null));
@@ -993,11 +1065,12 @@
     const fieldBox = (fl) => {
       const k = "p:" + fl, v = a.f[fl];
       if (v && !a.open[k] && a.ok[k] !== false)
-        return h("button", { class: "t-fpill" + (a.ok[k] ? " ok" : ""), style: "color:" + c, onclick: () => { a.open[k] = true; render(); } },
+        return h("button", { class: "t-fpill" + (a.ok[k] ? " ok" : "") + (fl === "case2" || fl === "gender2" ? " t-case2" : ""), style: "color:" + c, onclick: () => { a.open[k] = true; render(); } },
           h("span", { class: "lbl" }, E.FIELDS[fl].name), E.optLabel(fl, v, labelsFull()), h("span", { class: "t-edit" }, "✎"));
-      return h("div", { class: "t-field" + (a.ok[k] === false ? " bad" : "") },
-        h("span", { class: "lbl" }, E.FIELDS[fl].name),
-        h("div", { class: "chips" }, E.FIELDS[fl].opts.filter((o) => !(fl === "case" && o[0] === "V" && a.f.kind !== "Noun")).map((o) => h("button", {
+      const two = fl === "case2" || fl === "gender2";
+      return h("div", { class: "t-field" + (a.ok[k] === false ? " bad" : "") + (two ? " t-case2" : "") },
+        h("span", { class: "lbl" }, E.FIELDS[fl].name, two ? h("span", { class: "t-c2note" }, "this form could also be…") : (fl === "case" && fields.includes("case2")) || (fl === "gender" && fields.includes("gender2")) ? h("span", { class: "t-c2note plain" }, "in this sentence") : null),
+        h("div", { class: "chips" }, E.FIELDS[fl].opts.filter((o) => !((fl === "case" || fl === "case2") && o[0] === "V" && a.f.kind !== "Noun")).map((o) => h("button", {
           class: "chip t-chip" + (v === o[0] ? " sel" : "") + (a.ok[k] === false && v === o[0] ? " wrong" : ""), style: v === o[0] ? "color:" + c : "",
           onclick: () => { a.f[fl] = o[0]; delete a.ok[k]; delete a.ok.parse; delete a.open[k]; render(); },
         }, labelsFull() ? o[1] : o[2]))));
@@ -1033,9 +1106,50 @@
   }
 
   // ---------- Step 2: skeleton ----------
-  function startSkeleton() {
+  // Move between the three steps without losing anything.
+  function skelDone() {
+    const ss = T.session;
+    if (ss.skelSkipped) return true;
+    if (ss.order) return ss.order.passed || ss.order.shown;
+    return !!(ss.outline && (ss.outline.passed || ss.outline.shown));
+  }
+  function canGo(i) {
+    const ss = T.session;
+    if (i === 0) return true;
+    const parsed = ss.ans.every((a) => a.done);
+    if (i === 1) return parsed;
+    return parsed && skelDone();
+  }
+  function goStep(i) {
+    const ss = T.session;
+    ss.hint = null;
+    if (i === 0) { ss.phase = ss.ans.every((a) => a.done) ? "parsed" : "parse"; render(); return; }
+    if (i === 1) { startSkeleton(); return; }
+    if (ss.order && !ss.skelSkipped) ss.outline = { rows: [{ units: (ss.order.passed ? ss.order.placed : suggestOrder()).slice(), level: 0, role: "" }] };
+    ss.phase = "final"; render();
+  }
+  // The skeleton is optional: go straight to writing the sentence.
+  function skipSkeleton() {
+    const ss = T.session;
+    ss.skelSkipped = true; ss.hint = null;
+    ss.outline = { rows: [] };
+    ss.phase = "final"; render();
+  }
+  function startSkeleton(fresh) {
     const ss = T.session;
     ss.phase = "skeleton"; ss.hint = null;
+    // Coming back from the English step keeps the skeleton you built.
+    if (!fresh && !S().tSkelAdvanced && ss.order) { render(); return; }
+    if (!fresh && S().tSkelAdvanced && ss.outline && ss.outline.tray) { ss.order = null; render(); return; }
+    ss.order = null;
+    if (!S().tSkelAdvanced) {
+      // Simple skeleton: put the words in order, left to right.
+      const all = ss.units.map((u, n) => n);
+      ss.order = { placed: [], tray: all, result: null, passed: false, shown: false };
+      if (S().tShowStructure) { ss.order.placed = suggestOrder(); ss.order.tray = []; ss.help.structure = true; }
+      render();
+      return;
+    }
     if (S().tShowStructure) {
       const rows = E.suggestOutline(ss.s, ss.units);
       ss.outline = { rows: rows.map((r) => ({ units: r.units, level: r.level, role: r.role })), tray: [], sel: [], result: null, shown: false };
@@ -1083,6 +1197,156 @@
       line(1, "ὁ λόγος", "the Word", "Subject"),
       line(1, "πρὸς τὸν θεόν", "with God", "Prepositional phrase"),
       h("div", { class: "small muted", style: "margin-top:6px" }, "Read it back: “The Word was with God.” A word that describes a noun (an adjective or a genitive) goes one step further right, under that noun."));
+  }
+
+  // ---------- Step 2 (simple): put the words in order ----------
+  // Facts about a unit from the answer key, for the order rules.
+  function uInfo(n) {
+    const ss = T.session, u = ss.units[n], f = unitForms(u)[0];
+    if (!f) return { n, given: !!u.given };
+    const pos = E.posName(f.pos), p = f.parse || "--------";
+    return { n, pos, raw: f.pos, lemma: E.fw(f.lemma), mood: p[3], cas: p[4], num: p[5], gen: p[6], pron: pos === "Pronoun",
+      nominal: ["Noun", "Pronoun", "Adjective", "Article"].includes(pos), finite: pos === "Verb" && "ISDO".includes(p[3]), verbal: pos === "Verb" && "PN".includes(p[3]) };
+  }
+  const POSTPOS = ["δε", "γαρ", "ουν"];
+  const FRONT = ["και", "αλλα", "δε", "γαρ", "ουν"];
+  const NEG = ["ου", "μη"];
+  // Each rule says which units must sit where; all are lenient on purpose.
+  function orderRules() {
+    const ss = T.session, N = ss.units.length, I = ss.units.map((u, n) => uInfo(n)), e2g = ss.dir === "e2g";
+    const g = (n) => ss.units[n].greek;
+    const rules = [];
+    const inPrep = new Set();
+    I.forEach((x, n) => { if (x.pos === "Preposition" && n + 1 < N) inPrep.add(n + 1); });
+    // A preposition comes right before its object.
+    I.forEach((x, n) => { if (x.pos === "Preposition" && n + 1 < N) rules.push({ units: [n, n + 1], ok: (P) => P[n + 1] === P[n] + 1, msg: `Keep ${g(n)} right before ${g(n + 1)}. A preposition goes with its object.` }); });
+    // οὐ / μή stays right before the word it makes negative.
+    I.forEach((x, n) => { if (NEG.includes(x.lemma) && n + 1 < N) rules.push({ units: [n, n + 1], ok: (P) => P[n + 1] === P[n] + 1, msg: `Keep ${g(n)} right before ${g(n + 1)}; it makes that word negative.` }); });
+    // Conjunctions at the start of the Greek sentence.
+    I.forEach((x, n) => {
+      if (n > 1 || x.pos !== "Conjunction" || !FRONT.includes(x.lemma)) return;
+      if (e2g) {
+        if (POSTPOS.includes(x.lemma)) rules.push({ units: [n], ok: (P) => P[n] === 1, msg: `${g(n)} can't come first in Greek. It goes second.` });
+        else if (x.lemma === "και" || x.lemma === "αλλα") rules.push({ units: [n], ok: (P) => P[n] === 0, msg: `${g(n)} starts the sentence.` });
+      } else rules.push({ units: [n], ok: (P) => P[n] === 0, msg: `${g(n)} joins this sentence to what came before, so in English it comes first (“and”, “but”, “for”, “therefore”).` });
+    });
+    // A genitive noun ("of God") goes right after the word it describes.
+    I.forEach((x, n) => {
+      if (!x.nominal || x.pron || x.cas !== "G" || inPrep.has(n) || n === 0) return;
+      rules.push({ units: [n], ok: (P, ord) => { const prev = P[n] > 0 ? I[ord[P[n] - 1]] : null; return !!prev && (prev.nominal || prev.given); }, msg: `${g(n)} is genitive (“of …”). Put it right after the word it describes.` });
+    });
+    if (!e2g) {
+      // Split the sentence into clauses at conjunctions (καί, ὅτι, ἵνα…) and
+      // relative pronouns (ὅς, ὅστις), then check subject–verb–object inside
+      // each clause that has exactly one main verb.
+      const CL = ["και", "αλλα", "δε", "γαρ", "ουν", "οτι", "ινα", "εαν", "οταν", "ει", "ωσ", "ως", "καθωσ", "καθως", "επει", "οτε"];
+      const starts = [0];
+      I.forEach((x, n) => { if (n > 0 && ((x.pos === "Conjunction" && CL.includes(x.lemma)) || x.raw === "RR")) starts.push(n); });
+      starts.forEach((st, k) => {
+        const end = k + 1 < starts.length ? starts[k + 1] : N;
+        const seg = I.slice(st, end);
+        const fin = seg.filter((x) => x.finite);
+        if (fin.length !== 1) return;
+        const v = fin[0].n, copula = ["ειμι", "γινομαι"].includes(fin[0].lemma);
+        const noms = seg.filter((x) => x.nominal && x.cas === "N" && !inPrep.has(x.n) && x.pos !== "Article");
+        if (noms.length) {
+          if (copula) rules.push({ units: [v], ok: (P) => noms.some((x) => P[x.n] < P[v]), msg: "Who or what is the subject? Put it before the verb, like “The Word was…”." });
+          else noms.forEach((x) => rules.push({ units: [x.n, v], ok: (P) => P[x.n] < P[v], msg: `${g(x.n)} is nominative, so it's the subject of ${g(v)}. In English the subject comes before the verb.` }));
+        }
+        if (!seg.some((x) => x.verbal)) seg.forEach((x) => {
+          if (x.nominal && x.cas === "A" && !inPrep.has(x.n) && x.pos !== "Article") rules.push({ units: [x.n, v], ok: (P) => P[x.n] > P[v], msg: `${g(x.n)} is accusative, so it receives the action of ${g(v)}. In English it comes after the verb.` });
+        });
+      });
+    }
+    return rules;
+  }
+  function checkOrder(placed) {
+    const P = {}; placed.forEach((n, i) => { P[n] = i; });
+    const bad = orderRules().filter((r) => !r.ok(P, placed));
+    return { ok: !bad.length, bad };
+  }
+  // Ostraka's order: chunks (preposition + object, noun + its genitive, οὐ + word)
+  // moved so the rules pass.
+  function suggestOrder() {
+    const ss = T.session, N = ss.units.length;
+    let best = ss.units.map((u, n) => n);
+    const score = (o) => checkOrder(o).bad.length;
+    // Greedy: try moving each unit to every position while it helps.
+    for (let pass = 0; pass < 6 && score(best); pass++) {
+      for (let n = 0; n < N; n++) {
+        let cur = best, cs = score(cur);
+        for (let to = 0; to < N; to++) {
+          const o = cur.filter((x) => x !== n); o.splice(to, 0, n);
+          const sc = score(o);
+          if (sc < cs) { cur = o; cs = sc; }
+        }
+        best = cur;
+      }
+    }
+    return best;
+  }
+  function orderScreen() {
+    const ss = T.session, O2 = ss.order, e2g = ss.dir === "e2g";
+    const canDrag = matchMedia("(pointer: fine)").matches;
+    const res = O2.result;
+    const badUnits = new Set(res && !res.ok ? res.bad[0].units : []);
+    const dirty = () => { O2.result = null; O2.passed = false; };
+    const place = (n, at) => { O2.tray = O2.tray.filter((x) => x !== n); O2.placed = O2.placed.filter((x) => x !== n); if (at == null || at > O2.placed.length) O2.placed.push(n); else O2.placed.splice(at, 0, n); dirty(); render(); };
+    const unplace = (n) => { O2.placed = O2.placed.filter((x) => x !== n); O2.tray = O2.tray.concat(n).sort((a, b) => a - b); dirty(); render(); };
+    const startDrag = (e, n) => { T.drag = { type: "oword", n }; e.dataTransfer.effectAllowed = "move"; try { e.dataTransfer.setData("text/plain", "ostraka"); } catch (er) {} };
+    const clearDz = () => document.querySelectorAll(".dz-on,.dz-l,.dz-r").forEach((el) => el.classList.remove("dz-on", "dz-l", "dz-r"));
+    const endDrag = () => { T.drag = null; clearDz(); };
+    const side = (e) => { const r = e.currentTarget.getBoundingClientRect(); return e.clientX < r.left + r.width / 2 ? "l" : "r"; };
+    const dropOnPiece = (i) => canDrag && !O2.passed ? {
+      ondragover: (e) => { if (!T.drag) return; e.preventDefault(); e.stopPropagation(); clearDz(); e.currentTarget.classList.add("dz-" + side(e)); },
+      ondrop: (e) => { const d = T.drag; if (!d) return; e.preventDefault(); e.stopPropagation(); let at = side(e) === "l" ? i : i + 1; const from = O2.placed.indexOf(d.n); if (from >= 0 && from < at) at--; endDrag(); place(d.n, at); },
+    } : {};
+    const dropZone = (kind) => canDrag && !O2.passed ? {
+      ondragover: (e) => { if (!T.drag) return; e.preventDefault(); clearDz(); e.currentTarget.classList.add("dz-on"); },
+      ondragleave: (e) => { if (!e.currentTarget.contains(e.relatedTarget)) e.currentTarget.classList.remove("dz-on"); },
+      ondrop: (e) => { const d = T.drag; if (!d) return; e.preventDefault(); endDrag(); if (kind === "tray") unplace(d.n); else place(d.n); },
+    } : {};
+    const drag = (n) => canDrag && !O2.passed ? { draggable: "true", ondragstart: (e) => startDrag(e, n), ondragend: endDrag } : {};
+    const reads = O2.placed.map((n) => { const u = ss.units[n], a = ss.ans[n]; return e2g ? u.greek : u.given || a.f.ctx || u.greek; });
+    const check = () => {
+      if (O2.tray.length) { O2.result = { ok: false, bad: [{ units: O2.tray.slice(), msg: "Put every word in your order first." }] }; render(); return; }
+      O2.result = checkOrder(O2.placed);
+      if (O2.result.ok) O2.passed = true;
+      render();
+    };
+    const toFinal = () => { ss.outline = { rows: [{ units: O2.placed.slice(), level: 0, role: "" }] }; ss.phase = "final"; ss.hint = null; render(); };
+    const sugg = O2.passed || O2.shown ? suggestOrder() : null;
+    const same = sugg && sugg.join() === O2.placed.join();
+    return [
+      sentenceCard({ allClosed: true }),
+      h("div", { class: "card pad stack" },
+        h("div", { class: "row wrap" }, h("b", { style: "font-size:17px" }, "Put the words in order"), h("span", { class: "spacer" }),
+          h("button", { class: "btn sm", onclick: () => { O.set("tSkelAdvanced", true); startSkeleton(true); } }, "Advanced outline")),
+        O2.passed ? null : h("div", { class: "t-guide" }, h("div", null,
+          e2g ? "Tap the Greek words in the order you'd write them. " : "Tap the words in the order they'd go in English, left to right. ",
+          canDrag ? "You can also drag them, and drag a word back up to take it out." : "Tap a word in your order to take it back out.")),
+        O2.passed ? null : [
+          h("div", { class: "label", style: "margin:4px 0 0" }, "Your words"),
+          h("div", Object.assign({ class: "t-tray" }, dropZone("tray")), O2.tray.length ? O2.tray.map((n) =>
+            h("div", Object.assign({ class: "t-trayb", role: "button", tabindex: "0", onclick: () => place(n), onkeydown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); place(n); } } }, drag(n)), pieceCell(n))) :
+            h("span", { class: "muted small" }, "Every word is in your order."))],
+        h("div", { class: "label", style: "margin:6px 0 0" }, "Your order"),
+        h("div", Object.assign({ class: "t-orderline" + (O2.passed ? " ok" : "") }, dropZone("line")),
+          O2.placed.length ? O2.placed.map((n, i) => h("div", Object.assign({ class: "t-oslot" + (badUnits.has(n) ? " bad" : ""), role: "button", tabindex: "0", title: O2.passed ? null : "Tap to take it out",
+            onclick: O2.passed ? null : () => unplace(n) }, drag(n), dropOnPiece(i)), h("span", { class: "t-onum" }, i + 1), pieceCell(n))) :
+            h("span", { class: "muted small" }, canDrag ? "Tap or drag your first word here." : "Tap your first word above.")),
+        reads.length ? h("div", { class: "t-sofar" + (O2.passed ? " all" : "") }, h("span", { class: "t-sofar-l" }, "Reads"), h("span", { class: e2g ? "greek" : "" }, reads.join(" "))) : null,
+        res && !res.ok ? h("div", { class: "note", style: "color:var(--bad)" }, res.bad[0].msg, res.bad.length > 1 ? h("span", { class: "muted" }, ` (${res.bad.length - 1} more to fix)`) : null) : null,
+        O2.passed ? h("div", { class: "t-found" }, h("span", { class: "t-ok" }, "✓"), h("div", null, h("b", null, "Your order works. "), same ? "It matches Ostraka's." : "Here's Ostraka's order to compare."),
+          h("button", { class: "btn sm", style: "margin-left:auto", onclick: () => { dirty(); render(); } }, "✎ Edit order")) : null,
+        sugg && !same ? h("div", { class: "t-orderline sugg" }, sugg.map((n, i) => h("div", { class: "t-oslot" }, h("span", { class: "t-onum" }, i + 1), pieceCell(n, true)))) : null,
+        h("div", { class: "row wrap" },
+          h("span", { class: "spacer" }),
+          O2.passed ? null : h("button", { class: "btn link", onclick: skipSkeleton }, "Skip the skeleton"),
+          !O2.passed && res && !res.ok && !O2.shown ? h("button", { class: "btn", onclick: () => { O2.shown = true; ss.help.structure = true; render(); } }, "Show Ostraka's order") : null,
+          O2.passed || O2.shown ? h("button", { class: "btn pri big", onclick: () => { if (!O2.passed) O2.placed = suggestOrder(); toFinal(); } }, e2g ? "Write the Greek →" : "Write the English →") :
+            h("button", { class: "btn pri big", onclick: check }, "Check order ↩"))),
+    ];
   }
   function skeletonScreen() {
     const ss = T.session, O2 = ss.outline;
@@ -1175,7 +1439,8 @@
       sentenceCard({ allClosed: true }),
       h("div", { class: "card pad stack" },
         h("div", { class: "row wrap" }, h("b", { style: "font-size:17px" }, "Build the skeleton"), h("span", { class: "spacer" }),
-          h("button", { class: "btn sm", onclick: () => { O2.ex = !O2.ex; render(); } }, O2.ex ? "Hide example" : "How does this work?")),
+          h("button", { class: "btn sm", onclick: () => { O2.ex = !O2.ex; render(); } }, O2.ex ? "Hide example" : "How does this work?"),
+          h("button", { class: "btn sm", onclick: () => { O.set("tSkelAdvanced", false); startSkeleton(true); } }, "Simple order")),
         O2.ex ? skeletonExample() : null,
         O2.passed ? null : skeletonGuide(O2, canDrag),
         O2.passed ? null : [
@@ -1192,6 +1457,7 @@
           h("span", { class: "t-tag" + (r.role === "Verb" ? " ok" : "") }, r.role + (r.why ? " · " + r.why : ""))))) : null,
         h("div", { class: "row wrap" },
           h("span", { class: "spacer" }),
+          O2.passed ? null : h("button", { class: "btn link", onclick: skipSkeleton }, "Skip the skeleton"),
           !O2.passed && res && !res.ok && !O2.shown ? h("button", { class: "btn", onclick: () => { O2.shown = true; ss.help.structure = true; render(); } }, "Show Ostraka's outline") : null,
           O2.passed || O2.shown ? h("button", { class: "btn pri big", onclick: () => { ss.phase = "final"; ss.hint = null; render(); } }, ss.dir === "e2g" ? "Write the Greek →" : "Write the English →") :
             h("button", { class: "btn pri big", onclick: check }, "Check skeleton ↩"))),
@@ -1234,8 +1500,9 @@
     }
     return [
       sentenceCard({ allClosed: true }),
-      h("div", { class: "card pad stack" },
-        h("div", { class: "row" }, h("span", { class: "t-ok" }, "✓"), h("b", null, "Your outline")), h("div", { class: "t-outline" }, outline)),
+      ss.outline.rows.length ? h("div", { class: "card pad stack" },
+        h("div", { class: "row" }, h("span", { class: "t-ok" }, "✓"), h("b", null, ss.order ? "Your order" : "Your outline")), h("div", { class: "t-outline" }, outline)) :
+        h("div", { class: "card pad row" }, h("span", { class: "muted" }, "Skeleton skipped."), h("span", { class: "spacer" }), h("button", { class: "btn sm", onclick: () => { ss.skelSkipped = false; startSkeleton(); } }, "Build it now")),
       h("div", { class: "card pad stack" }, h("b", { style: "font-size:17px" }, e2g ? "3 · Your Greek" : "3 · Your English"), checkArea),
     ];
   }

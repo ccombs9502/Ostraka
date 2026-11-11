@@ -118,7 +118,38 @@
     case: { i: 4, name: "Case", opts: [["N", "Nominative", "Nom"], ["G", "Genitive", "Gen"], ["D", "Dative", "Dat"], ["A", "Accusative", "Acc"], ["V", "Vocative", "Voc"]] },
     number: { i: 5, name: "Number", opts: [["S", "Singular", "Sing"], ["P", "Plural", "Pl"]] },
     gender: { i: 6, name: "Gender", opts: [["M", "Masculine", "Masc"], ["F", "Feminine", "Fem"], ["N", "Neuter", "Neut"]] },
+    // The other gender an ambiguous form (αὐτοῦ: masculine or neuter) could be.
+    gender2: { i: 6, name: "Gender 2", opts: [["M", "Masculine", "Masc"], ["F", "Feminine", "Fem"], ["N", "Neuter", "Neut"]] },
+    // The other case an ambiguous form (ἔργα: nominative or accusative) could be.
+    case2: { i: 4, name: "Case 2", opts: [["N", "Nominative", "Nom"], ["G", "Genitive", "Gen"], ["D", "Dative", "Dat"], ["A", "Accusative", "Acc"], ["V", "Vocative", "Voc"]] },
     takes: { name: "Takes the", opts: [["G", "Genitive", "Gen"], ["D", "Dative", "Dat"], ["A", "Accusative", "Acc"]] },
+  };
+  // Every case this exact form can be, with the same lemma, number and gender
+  // (from the whole New Testament, plus the rule that a neuter nominative and
+  // accusative always look the same). Vocative is left out.
+  E.caseOptions = (word, key) => {
+    if (!key || !key.parse || key.parse[4] === "-") return [];
+    const set = new Set([key.parse[4]]);
+    (E.byFold.get(fw(word)) || []).forEach((i) => {
+      const f = E.forms[i], c = f[3][4];
+      if (f[1] === key.lemmaIdx && f[3][5] === key.parse[5] && f[3][6] === key.parse[6] && c !== "-" && c !== "V") set.add(c);
+    });
+    if (key.parse[6] === "N" && "NA".includes(key.parse[4])) { set.add("N"); set.add("A"); }
+    return [...set];
+  };
+  // Every gender this exact form can be, with the same lemma, case and number.
+  // Nouns have one gender, so only adjectives, pronouns, articles and participles.
+  E.genderOptions = (word, key) => {
+    if (!key || !key.parse || "-".includes(key.parse[6]) || /^N/.test(key.pos)) return [];
+    const set = new Set([key.parse[6]]);
+    (E.byFold.get(fw(word)) || []).forEach((i) => {
+      const f = E.forms[i], g = f[3][6];
+      if (f[1] === key.lemmaIdx && f[3][4] === key.parse[4] && f[3][5] === key.parse[5] && g !== "-") set.add(g);
+    });
+    // Second-declension masculine and neuter share the genitive and dative.
+    // (Participles too: λύοντος, λύοντι.)
+    if ("MN".includes(key.parse[6]) && "GD".includes(key.parse[4]) && (/^V/.test(key.pos) || /ο[σς]$/.test(fw(E.lemmas[key.lemmaIdx] || "")))) { set.add("M"); set.add("N"); }
+    return [...set];
   };
   E.optLabel = (field, code, full) => { const o = E.FIELDS[field].opts.find((x) => x[0] === code); return o ? (full ? o[1] : o[2]) : ""; };
 
@@ -157,6 +188,7 @@
       const lab = E.optLabel(f, v, full);
       if (f === "number" && fields.includes("person") && get("person")) { parts[parts.length - 1] += " " + lab; continue; }
       if (f === "takes") { parts.push("+ " + lab); continue; }
+      if ((f === "case2" || f === "gender2") && parts.length) { parts[parts.length - 1] += " / " + lab; continue; }
       parts.push(lab);
     }
     return parts.join(", ");
