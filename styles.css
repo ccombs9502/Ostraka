@@ -601,3 +601,25 @@ button:focus-visible, .chip:focus-visible, .how:focus-visible, .tile:focus-visib
 .t-done-btns { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 6px; width: 100%; }
 .t-done-btns .btn { flex: 1 1 180px; max-width: 100%; white-space: normal; }
 @media (max-width: 600px) { .t-done-btns .btn { flex-basis: 100%; } }
+
+/* Stage 2: one question at a time, explained mistakes, related chart */
+.t-pills { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 4px; }
+.t-pill { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px; border: 0; cursor: pointer; background: var(--ok-soft); color: var(--ok); font: inherit; font-weight: 600; font-size: 13.5px; }
+.t-pill .k { color: var(--muted); font-weight: 500; }
+.t-pill .greek { font-size: 16px; }
+.t-pill:hover { box-shadow: 0 0 0 1px var(--ok); }
+.t-qn { margin: 6px 0 -4px; }
+.t-one .t-row { border-top: 0; }
+.t-fb { display: flex; gap: 10px; align-items: flex-start; margin-top: 10px; padding: 12px 14px; border-radius: 12px; background: var(--bad-soft); border: 1px solid color-mix(in srgb, var(--bad) 30%, transparent); line-height: 1.45; }
+.t-fb .x { flex: none; width: 22px; height: 22px; border-radius: 50%; background: var(--bad); color: #fff; display: grid; place-items: center; font-size: 12px; font-weight: 700; margin-top: 1px; }
+.t-end { font-size: 17px; }
+.t-end u { text-decoration: none; background: rgba(181,133,47,.25); border-bottom: 2px solid var(--gold); padding: 0 1px; border-radius: 2px; }
+.t-alt { font-size: 17px; font-weight: 600; }
+.ref.t-mini { border-spacing: 2px; padding: 4px; box-shadow: none; border-radius: 0; margin: 0; width: 100%; }
+.ref.t-mini td { font-size: 16px; padding: 3px 6px; }
+.ref.t-mini td.rl { font-size: 12px; padding-left: 0; }
+.ref.t-mini th { font-size: 11px; padding: 0 6px; }
+.t-mini td.t-you { background: rgba(181,133,47,.22); box-shadow: inset 0 0 0 2px var(--gold); font-weight: 700; border-radius: 4px; }
+.t-mini td.t-hit { background: var(--ok-soft); box-shadow: inset 0 0 0 2px var(--ok); font-weight: 700; border-radius: 4px; }
+.t-youk { color: var(--gold); } .t-hitk { color: var(--ok); }
+.t-fold-l { font-size: 11.5px; color: var(--muted); font-weight: 600; margin-top: 1px; white-space: nowrap; }

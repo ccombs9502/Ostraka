@@ -524,48 +524,67 @@
   };
 
   // ---------- Related paradigm charts ----------
+  // The built-in chart a form comes from (f = { lemma, pos, parse }), or null.
+  E.chartFor = (f) => {
+    if (!f || !f.parse) return null;
+    const L = fw(f.lemma), p = f.parse, ok = (id) => (id && O.pById(id) ? id : null);
+    if (f.pos === "RA") return ok("article");
+    if (f.pos === "RP") {
+      if (["εγω", "συ", "αυτοσ"].includes(L) && "123".includes(p[0])) return ok({ 1: "p-ego", 2: "p-sy", 3: "p-autos" }[p[0]]);
+      return ok({ εγω: "p-ego", συ: "p-sy", αυτοσ: "p-autos" }[L]);
+    }
+    if (f.pos === "RR") return ok("p-hos");
+    if (f.pos === "RD") return ok({ ουτοσ: "p-houtos", εκεινοσ: "p-ekeinos" }[L]);
+    if (f.pos === "N-") {
+      const g = p[6];
+      if (L.endsWith("οσ") && g === "M") return ok("n-logos");
+      if (L.endsWith("ον") && g === "N") return ok("n-ergon");
+      if (L.endsWith("η") && g === "F") return ok("n-graphe");
+      if (L.endsWith("α") && g === "F") return ok(/[ειρ]α$/.test(L) ? "n-hemera" : "n-doxa");
+      if (L.endsWith("ησ") && g === "M") return ok("n-prophetes");
+      if (L.endsWith("μα")) return ok("n-onoma");
+      if (L.endsWith("ευσ")) return ok("n-basileus");
+      if (L.endsWith("ηρ")) return ok("n-pater");
+      if (L.endsWith("οσ") && g === "N") return ok("n-genos");
+      if (L.endsWith("ισ")) return ok(L.endsWith("σισ") ? "n-polis" : "n-elpis");
+      return ok("n-sarx");
+    }
+    if (f.pos === "A-") return ok({ πασ: "a-pas", μεγασ: "a-megas", πολυσ: "a-polys" }[L] || "a-agathos");
+    if (f.pos === "V-") {
+      const [, t, v, m] = p;
+      if (L === "ειμι") return ok({ P: "eimi-pres", I: "eimi-impf", F: "eimi-fut" }[t]);
+      if (L === "οιδα") return ok(t === "Y" ? "oida-plpf" : "oida-perf");
+      if (m === "P") return ok({ PA: "pt-pres-a", PM: "pt-pres-mp", PP: "pt-pres-mp", AA: "pt-aor-a", AM: "pt-aor-m", AP: "pt-aor-p", XA: "pt-perf-a", XM: "pt-perf-mp", XP: "pt-perf-mp" }[t + v]);
+      if (m === "I") {
+        const mp = "MP".includes(v);
+        const contract = L.endsWith("αω") ? "c-agapao" : L.endsWith("εω") ? "c-poieo" : L.endsWith("οω") ? "c-pleroo" : null;
+        if (contract && (t === "P" || t === "I")) return ok(contract + (t === "I" ? "-impf" : "") + (mp ? "-mp" : ""));
+        const tn = { P: "pres", I: "impf", F: "fut", A: "aor", X: "perf", Y: "plpf" }[t];
+        const vn = t === "P" || t === "I" || t === "X" ? (mp ? "mp" : "a") : t === "Y" ? "a" : { A: "a", M: "m", P: "p" }[v];
+        return ok(`luo-${tn}-${vn}`);
+      }
+    }
+    return null;
+  };
+  // Which box of a chart a parsing belongs in: { r, c }, or null.
+  E.chartCell = (chart, parse) => {
+    if (!chart || !parse) return null;
+    const R = chart.rows.length, C = chart.columns.length;
+    const num = parse[5] === "P" ? 1 : parse[5] === "S" ? 0 : -1;
+    let r = -1, c = -1;
+    if (R === 8 && C === 3) { const ci = "NGDA".indexOf(parse[4]); r = ci < 0 || num < 0 ? -1 : ci + num * 4; c = "MFN".indexOf(parse[6]); }
+    else if (R === 4 && C === 2) { r = "NGDA".indexOf(parse[4]); c = num; }
+    else if (R === 3 && C === 2) { r = "123".indexOf(parse[0]); c = num; }
+    return r >= 0 && c >= 0 ? { r, c } : null;
+  };
   E.charts = (s) => {
     const key = E.keyFor(s);
     if (!key) return [];
     const ids = [];
-    const add = (id) => { if (id && !ids.includes(id) && O.pById(id)) ids.push(id); };
     key.forEach((k, i) => {
       if (!k.forms.length || s.tokens[i].given) return;
-      const f = E.info(k.forms[0]), L = fw(f.lemma), p = f.parse;
-      if (f.pos === "RA") add("article");
-      else if (f.pos === "RP") add({ εγω: "p-ego", συ: "p-sy", αυτοσ: "p-autos" }[L]);
-      else if (f.pos === "RR") add("p-hos");
-      else if (f.pos === "RD") add({ ουτοσ: "p-houtos", εκεινοσ: "p-ekeinos" }[L]);
-      else if (f.pos === "N-") {
-        const g = p[6];
-        if (L.endsWith("οσ") && g === "M") add("n-logos");
-        else if (L.endsWith("ον") && g === "N") add("n-ergon");
-        else if (L.endsWith("η") && g === "F") add("n-graphe");
-        else if (L.endsWith("α") && g === "F") add(/[ειρ]α$/.test(L) ? "n-hemera" : "n-doxa");
-        else if (L.endsWith("ησ") && g === "M") add("n-prophetes");
-        else if (L.endsWith("μα")) add("n-onoma");
-        else if (L.endsWith("ευσ")) add("n-basileus");
-        else if (L.endsWith("ηρ")) add("n-pater");
-        else if (L.endsWith("οσ") && g === "N") add("n-genos");
-        else if (L.endsWith("ισ")) add(L.endsWith("σισ") ? "n-polis" : "n-elpis");
-        else add("n-sarx");
-      } else if (f.pos === "A-") add({ πασ: "a-pas", μεγασ: "a-megas", πολυσ: "a-polys" }[L] || "a-agathos");
-      else if (f.pos === "V-") {
-        const [, t, v, m] = p;
-        if (L === "ειμι") add({ P: "eimi-pres", I: "eimi-impf", F: "eimi-fut" }[t]);
-        else if (L === "οιδα") add(t === "Y" ? "oida-plpf" : "oida-perf");
-        else if (m === "P") add({ PA: "pt-pres-a", PM: "pt-pres-mp", PP: "pt-pres-mp", AA: "pt-aor-a", AM: "pt-aor-m", AP: "pt-aor-p", XA: "pt-perf-a", XM: "pt-perf-mp", XP: "pt-perf-mp" }[t + v]);
-        else if (m === "I") {
-          const mp = "MP".includes(v);
-          const contract = L.endsWith("αω") ? "c-agapao" : L.endsWith("εω") ? "c-poieo" : L.endsWith("οω") ? "c-pleroo" : null;
-          if (contract && (t === "P" || t === "I")) add(contract + (t === "I" ? "-impf" : "") + (mp ? "-mp" : ""));
-          else {
-            const tn = { P: "pres", I: "impf", F: "fut", A: "aor", X: "perf", Y: "plpf" }[t];
-            const vn = t === "P" || t === "I" || t === "X" ? (mp ? "mp" : "a") : t === "Y" ? "a" : { A: "a", M: "m", P: "p" }[v];
-            add(`luo-${tn}-${vn}`);
-          }
-        }
-      }
+      const id = E.chartFor(E.info(k.forms[0]));
+      if (id && !ids.includes(id)) ids.push(id);
     });
     return ids;
   };

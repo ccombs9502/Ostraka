@@ -76,7 +76,7 @@
     // Keep the scroll position when the same screen redraws after a tap; only
     // a new screen (another page, sentence or step) starts back at the top.
     const screen = ot ? "t|" + ot.ids[ot.i] + "|" + (ot.phase === "parsed" ? "parse" : ot.phase) : st.session ? "s" : "shell|" + st.section;
-    const SCROLLERS = [".content", ".s-body", ".sheet .body", ".t-prev"];
+    const SCROLLERS = [".content", ".s-body", ".sheet .body", ".t-prev", ".sheet .list"];
     const saved = screen === render.screen ? SCROLLERS.map((q) => { const el = app.querySelector(q); return el ? el.scrollTop : 0; }) : null;
     const winY = window.scrollY;
     render.screen = screen;

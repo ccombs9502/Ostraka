@@ -537,12 +537,24 @@
     const f = unitForms(u)[0];
     if (!f) return "?";
     const g = (E.gloss(f.lemma) || "").split(/[,;(]/)[0].trim().replace(/^I /, "");
-    return (u.article ? "the " : "") + (g || f.lemma);
+    if (!g) return f.lemma;
+    return u.article ? "the " + g.replace(/^(a|an|the) /i, "") : g;
   };
   // Parsing labels: "full" (default), "short" (Pres, Act…) or "letters" (PAI1P).
   // Show work always uses letters; parsing uses the label switch (full words by default).
   const labelMode = () => S().tLabels || (S().tLabelsFull === false ? "short" : "full");
   const labelsFull = () => { const m = labelMode(); return m === "full" ? true : m === "letters" ? "letters" : false; };
+  // Stage 2: one question at a time (default), or every box at once.
+  const oneAtATime = () => S().tOneQ !== false;
+  // The questions this word shows, in order.
+  function visibleSteps(u, a) {
+    const fields = a.f.kind ? fieldsNow(u, a) : [];
+    return stepsFor(u).filter((k) => k !== "parse" || (a.f.kind ? fields.length : !noParse(u)));
+  }
+  function currentQ(u, a) {
+    const vis = visibleSteps(u, a);
+    return (a.edit && vis.includes(a.edit) && !a.ok[a.edit] ? a.edit : null) || vis.find((k) => !a.ok[k]) || null;
+  }
 
   // Which steps a unit has, in order.
   function stepsFor(u) {
@@ -610,7 +622,10 @@
     a.tries++;
     let allOk = true;
     const mark = (k, ok) => { a.ok[k] = !!ok; if (!ok) allOk = false; };
-    for (const step of stepsFor(u)) {
+    const one = oneAtATime();
+    const q = one ? currentQ(u, a) : null;
+    const todo = one ? (q ? [q] : []) : stepsFor(u);
+    for (const step of todo) {
       if (step === "kind") mark("kind", !!a.f.kind && (noKey || forms.some((f) => E.kindsFor(f).includes(a.f.kind))));
       if (step === "lex") {
         // Accents and breathing marks don't matter, and an article in front
@@ -648,11 +663,19 @@
       }
       if (step === "form") mark("form", !!a.f.form && E.fw(a.f.form) === E.fw(u.greek));
     }
+    // A word with nothing to parse (καί, οὖν) passes the parsing step on its own.
+    if (a.ok.kind && !fieldsNow(u, a).length) a.ok.parse = true;
+    // English → Greek: the chart would give away the form you're about to write.
+    if (todo.includes("parse") && ss.dir !== "e2g") a.chartOn = true;
+    a.fb = allOk ? null : explain(u, a, todo.filter((k) => a.ok[k] === false));
+    if (allOk) delete a.edit;
     ["lex", "mean", "ctx", "form"].forEach((k) => { if (a.ok[k]) { a.closed[k] = true; delete a.open[k]; } });
     Object.keys(a.ok).forEach((k) => { if (k.startsWith("p:") && a.ok[k]) delete a.open[k]; });
     if (a.ok.kind) delete a.open.kind;
     if (!allOk) { a.missed = true; render(); return; }
-    a.done = true; a.skip = false; ss.hint = null;
+    // One at a time: on to the next question for this word.
+    if (one && stepsFor(u).some((k) => !a.ok[k])) { ss.hint = null; render(); return; }
+    a.done = true; a.skip = false; ss.hint = null; a.fb = null;
     advance();
   }
   // Tap any word to work on it, including one you already finished. A
@@ -677,8 +700,8 @@
   }
   function openWord(n) {
     const ss = T.session, a = ss.ans[n];
-    if (a.done) { a.done = false; a.reopened = true; a.ok = {}; a.open = {}; a.closed = {}; a.missed = false; }
-    ss.cur = n; ss.hint = null; ss.phase = "parse";
+    if (a.done) { a.done = false; a.reopened = true; a.ok = {}; a.open = {}; a.closed = {}; a.missed = false; a.fb = null; delete a.edit; }
+    ss.cur = n; ss.hint = null; ss.phase = "parse"; ss.sideTab = null;
     render();
   }
   function advance() {
@@ -687,7 +710,7 @@
     let next = ss.ans.findIndex((a, i) => i > from && !a.done && !a.skip);
     if (next < 0) next = ss.ans.findIndex((a) => !a.done && !a.skip);
     if (next < 0) { next = ss.ans.findIndex((a) => !a.done); if (next >= 0) ss.ans.forEach((a) => { a.skip = false; }); }
-    ss.cur = next;
+    ss.cur = next; ss.sideTab = null;
     if (next < 0) ss.phase = "parsed";
     render();
   }
@@ -705,6 +728,110 @@
     if (/\b(of|from|than|about|by|whose|my|your|his|her|its|our|their|mine|yours)\b|'s\b|s'/.test(t)) return null;
     return `${u.greek} is genitive, so it usually reads “of …” (or “…'s”, or “my/his/their …”). If your English fits here anyway, press Check again to keep it.`;
   }
+  // ---------- Explaining a wrong answer (Stage 2) ----------
+  // The word with its ending marked: the letters after what it shares with
+  // its dictionary form (at most the last 4).
+  function endingNode(u) {
+    const word = T.session.s.tokens[u.head].w.normalize("NFC");
+    const chars = [...word], f = unitForms(u)[0];
+    const lem = f ? [...E.fw(f.lemma)] : [];
+    let cp = 0;
+    while (cp < chars.length && cp < lem.length && E.fw(chars[cp]) === lem[cp]) cp++;
+    if (cp < 2 && lem.length > 2) {
+      // An augment or prefix in front (ἔλεγεν ← λέγω): find the stem inside the word.
+      const fold = chars.map((ch) => E.fw(ch)).join("");
+      for (let k = lem.length - 1; k >= 2; k--) { const at = fold.indexOf(lem.slice(0, k).join("")); if (at > 0) { cp = at + k; break; } }
+    }
+    const at = Math.max(1, Math.min(chars.length - 1, Math.max(cp, chars.length - 4)));
+    if (chars.length < 2) return h("span", { class: "greek t-end" }, word);
+    return h("span", { class: "greek t-end" }, chars.slice(0, at).join(""), h("u", null, chars.slice(at).join("")));
+  }
+  const KIND_WHAT = {
+    Verb: "A verb shows an action or a state, and ends in a person ending (-ω, -εις, -ει, -ομεν…).",
+    Noun: "A noun names a person, place or thing, and ends in a case ending (-ος, -ου, -ῳ, -ον…).",
+    Article: "The article is “the” (ὁ, ἡ, τό, τοῦ…), and it sits right before its noun.",
+    Pronoun: "A pronoun stands in for a noun: I, you, he, this, who.",
+    Adjective: "An adjective describes a noun and matches it in case, number and gender.",
+    Preposition: "A preposition links the noun after it to the sentence (ἐν, εἰς, ἀπό…).",
+    Conjunction: "A conjunction joins words or clauses (καί, δέ, γάρ…).",
+    Adverb: "An adverb tells how, when or where, and never changes form.",
+    Particle: "A particle adds emphasis or a shade of meaning (ἄν, γε…).",
+  };
+  const LEX_SHAPE = {
+    Verb: "For a verb that's the 1st person singular present: -ω, -ομαι or -μι.",
+    Noun: "For a noun that's the nominative singular: -ος, -η, -α, -ον, -μα…",
+    Adjective: "For an adjective that's the masculine nominative singular, usually -ος.",
+    Pronoun: "For a pronoun that's the nominative singular (ἐγώ, σύ, αὐτός, οὗτος).",
+    Article: "For the article that's ὁ.",
+  };
+  const val = (fl, v) => E.optLabel(fl.replace(/2$/, ""), v, true);
+  function explain(u, a, wrong) {
+    if (!wrong.length) return null;
+    const forms = unitForms(u), f = forms[0];
+    const word = T.session.s.tokens[u.head].w;
+    const kind = f ? E.posName(f.pos) : null;
+    const out = [];
+    // English → Greek: never show the Greek word you're building.
+    const e2g = T.session.dir === "e2g";
+    const look = () => e2g ? ["Look at the English again: “", cueFor(u, T.session.units.indexOf(u)), "”."] : ["Look at the ending: ", endingNode(u), "."];
+    for (const step of wrong) {
+      if (step === "kind") {
+        if (!a.f.kind) { out.push(["Choose what kind of word it is."]); continue; }
+        const real = f ? E.kindsFor(f) : [];
+        const verbish = real.includes("Verb"), chosenVerb = a.f.kind === "Verb";
+        out.push([`It isn't a${/^[AEIOU]/.test(a.f.kind) ? "n" : ""} ${a.f.kind.toLowerCase()} here. ${KIND_WHAT[a.f.kind] || ""} `,
+          verbish !== chosenVerb && kind !== "Preposition" && !e2g ? ["Look at the ending: ", endingNode(u), verbish ? ". That's a person ending." : ". That's a case ending."] : "Ask what job it does in the sentence."]);
+      }
+      if (step === "lex") {
+        const v = E.fw((a.f.lex || "").split(",")[0].trim().split(/\s+/).pop() || "");
+        if (!v) { out.push(["Type the dictionary form."]); continue; }
+        const shape = LEX_SHAPE[a.f.kind || kind] || "";
+        if (v === E.fw(word) && !e2g) out.push(["That's the form in the sentence. The lexical form is the one you'd look up. " + shape]);
+        else if (f && v[0] !== E.fw(f.lemma)[0]) out.push([`The dictionary form doesn't start with “${[...(a.f.lex || "").trim()][0]}”. ${shape}`]);
+        else out.push(["Close: the start looks right. Check the ending. " + shape]);
+      }
+      if (step === "mean") {
+        const ans = (a.f.mean || "").trim();
+        if (!ans) { out.push(["Type what the dictionary form means."]); continue; }
+        if (/\b(of|to|for|by|with)\b|'s\b/i.test(ans)) out.push([`“${ans}” is how it reads in this sentence. Here, give the plain dictionary meaning without “of / to / for”. That goes in “In this sentence”.`]);
+        else out.push([`“${ans}” isn't a meaning of ${f ? f.lemma : "this word"}. If you're sure it is, tap “I was right, count it”.`]);
+      }
+      if (step === "parse") {
+        const fields = fieldsNow(u, a);
+        const bad = fields.filter((fl) => a.ok["p:" + fl] === false), good = fields.filter((fl) => a.ok["p:" + fl]);
+        for (const fl of bad) {
+          const v = a.f[fl];
+          if (!v) { out.push([`Choose the ${E.FIELDS[fl].name.toLowerCase()}.`]); continue; }
+          if (fl === "case2" || fl === "gender2") { out.push([`${e2g ? "This form" : word} can't also be ${val(fl, v).toLowerCase()}. Check the chart: is this same ending listed there too?`]); continue; }
+          if (fl === "takes") { out.push([`Here ${e2g ? "the preposition" : word} doesn't take the ${val(fl, v).toLowerCase()}. Look at the case of the word right after it.`]); continue; }
+          const line = [`${E.FIELDS[fl].name} isn't ${val(fl, v).toLowerCase()}. `];
+          if (e2g) line.push(...look());
+          else if (f && f.parse && E.FIELDS[fl].i != null) {
+            const alt = f.parse.split(""); alt[E.FIELDS[fl].i] = v;
+            const altParse = alt.join(""), id = E.chartFor({ lemma: f.lemma, pos: f.pos, parse: altParse }), q = id && O.pById(id);
+            const cell = q && E.chartCell(q, altParse);
+            const form = cell ? O.pDisplay(q.cells[cell.r][cell.c]) : null;
+            if (form) {
+              const same = E.fw(q.lemma.split(",")[0]) === E.fw(f.lemma);
+              line.push(same ? "That form would be " : `In the ${q.lemma.split(",")[0]} chart, that form is `, h("span", { class: "greek t-alt" }, form), ". Compare its ending with ", endingNode(u), ".");
+            } else line.push(...look());
+          }
+          out.push(line);
+        }
+        if (bad.length && good.length) out.push([`${good.map((fl) => E.FIELDS[fl].name).join(" and ").replace(/ and (?=.* and )/g, ", ")} ${good.length === 1 ? "is" : "are"} right.`]);
+      }
+      if (step === "ctx" && !(a.f.ctx || "").trim()) out.push(["Type how this word reads in this sentence."]);
+      if (step === "form") out.push([(a.f.form || "").trim() ? hintText(u, a, "form", 1) : "Write the Greek form."]);
+    }
+    return out.length ? out : null;
+  }
+  // "Explain mistakes" can be turned off in ⚙ (wrong answers are still marked red).
+  const explainOn = () => S().tExplain !== false;
+  function feedbackBox(a) {
+    if (!a.fb || !explainOn()) return null;
+    return h("div", { class: "t-fb", role: "alert" }, h("span", { class: "x" }, "✕"), h("div", { class: "stack", style: "gap:6px" }, a.fb.map((line) => h("div", null, line))));
+  }
+
   // "and, even, also" counts when any of the meanings listed is right.
   // Personal pronouns: "my" for ἐγώ, "his" for αὐτός … count as the dictionary meaning too.
   const PRON_FORMS = {
@@ -801,6 +928,8 @@
     return h("div", { class: "t-pop t-set" + ap("tset", "1") },
       h("div", { class: "row" }, h("b", null, "View"), h("span", { class: "spacer" }), h("button", { class: "icon-btn", onclick: () => { ss.settingsOpen = false; render(); } }, icon("x"))),
       h("div", { class: "t-set-row" }, h("span", null, "Notes"), seg([["folded", "Folded"], ["full", "Full"]], S().tNotesFull ? "full" : "folded", (v) => { O.set("tNotesFull", v === "full"); Object.keys(ss.lines).forEach((k) => { if (ss.lines[k] === "open") delete ss.lines[k]; }); render(); })),
+      h("div", { class: "t-set-row" }, h("span", null, "Questions"), seg([["one", "One at a time"], ["all", "All at once"]], oneAtATime() ? "one" : "all", (v) => { O.set("tOneQ", v === "one"); render(); })),
+      h("div", { class: "t-set-row" }, h("span", null, "Explain mistakes"), seg([["on", "On"], ["off", "Off"]], explainOn() ? "on" : "off", (v) => { O.set("tExplain", v === "on"); render(); })),
       h("div", { class: "t-set-row" }, h("span", null, "Labels"), seg([["letters", "PAI1P"], ["short", "Short"], ["full", "Full words"]], labelMode(), (v) => { O.set("tLabels", v); render(); })),
       lines.length > 1 ? (() => {
         const closedNow = lines.some((l, i) => ss.lines[i] === "closed" || (ss.lines[i] !== "open" && lineDone(l) && i !== curLine));
@@ -925,7 +1054,11 @@
     if (u.given) return h("div", { class: "t-given-tx" }, e2g ? u.greek : "“" + u.given + "”");
     if (!full) {
       const fold = e2g ? (a.ok.form ? u.greek : null) : a.ok.ctx ? a.f.ctx : null;
-      return fold ? h("div", { class: "t-fold" + (e2g ? " gk" : ""), style: "color:" + c }, fold) : null;
+      if (!fold) return null;
+      // A short label too, so the color is never the only cue.
+      const fl = a.done && a.f.kind ? fieldsNow(u, a) : [];
+      const lab = a.done ? (fl.length ? (a.f.kind === "Preposition" ? "Prep " : "") + E.parseLabel(fl, (x) => a.f[x], false) : a.f.kind) : "";
+      return h("div", null, h("div", { class: "t-fold" + (e2g ? " gk" : ""), style: "color:" + c }, fold), lab ? h("div", { class: "t-fold-l" }, lab) : null);
     }
     // While you work on a word, what you've entered shows right away; Check marks it right or wrong.
     const cur = n === ss.cur && ss.phase === "parse";
@@ -1053,7 +1186,7 @@
   // ---------- Step 1: parse / build each word ----------
   function parseScreen() {
     const ss = T.session;
-    const side = colorChart();
+    const side = ss.phase === "parsed" ? colorChart() : sidePanel();
     if (ss.phase === "parsed") {
       return [sentenceCard(), h("div", { class: "t-grid" },
         h("div", { class: "card pad row", style: "gap:14px" }, h("span", { class: "t-ok big" }, "✓"),
@@ -1065,7 +1198,47 @@
     return [sentenceCard(), h("div", { class: "t-grid" }, workspace(), side)];
   }
 
-  function colorChart() {
+  // After you check a word's parsing, the side panel turns into the chart it
+  // comes from, with your choice marked. Asking for it before checking counts as help.
+  function wordChart(u, a) {
+    const f = unitForms(u)[0];
+    if (!f || !f.parse) return null;
+    let parse = f.parse, mine = false;
+    if (!a.ok.parse && a.chartOn) {
+      // Your choice: the key's parsing with your picks swapped in.
+      const p = parse.split("");
+      fieldsNow(u, a).forEach((fl) => { const def = E.FIELDS[fl]; if (def.i != null && !/2$/.test(fl) && a.f[fl]) p[def.i] = a.f[fl]; });
+      parse = p.join(""); mine = true;
+    }
+    const id = E.chartFor({ lemma: f.lemma, pos: f.pos, parse });
+    const q = id && O.pById(id);
+    if (!q) return null;
+    return { q, cell: a.chartOn ? E.chartCell(q, parse) : null, mine };
+  }
+  function sidePanel() {
+    const ss = T.session, n = ss.cur, u = ss.units[n], a = n >= 0 ? ss.ans[n] : null;
+    if (!u || !a) return colorChart();
+    const wc = wordChart(u, a);
+    const open = wc && (a.chartOn || a.askChart);
+    if (!open || ss.sideTab === "colors") {
+      return colorChart(wc ? (open ? h("button", { class: "btn", style: "width:100%;margin-top:10px", onclick: () => { ss.sideTab = "chart"; render(); } }, "Show the chart") :
+        h("button", { class: "btn", style: "width:100%;margin-top:10px", title: "Counts as help", onclick: () => { a.askChart = true; ss.help.charts = 1; ss.sideTab = "chart"; render(); } }, "Chart for this word")) : null);
+    }
+    const { q, cell, mine } = wc;
+    const word = ss.s.tokens[u.head].w;
+    return h("div", { class: "t-side t-rchart" },
+      h("div", { class: "row" }, h("div", { class: "label", style: "margin:0" }, "Related chart"), h("span", { class: "spacer" }),
+        h("button", { class: "btn link small", onclick: () => { ss.sideTab = "colors"; render(); } }, "Colors")),
+      h("div", { style: "font-weight:700;margin:4px 0 8px" }, h("span", { class: "greek" }, q.lemma.split(",")[0]), " · ", q.title),
+      h("div", { class: "scroll-x" }, h("table", { class: "ref t-mini" },
+        h("tr", null, h("th", null, ""), q.columns.map((c) => h("th", null, c.replace("Masculine", "Masc").replace("Feminine", "Fem").replace("Neuter", "Neut").replace("Singular", "Sg").replace("Plural", "Pl")))),
+        q.rows.map((r, i) => h("tr", null, h("td", { class: "rl" }, r.replace(" person", "").replace("Nominative", "Nom").replace("Genitive", "Gen").replace("Dative", "Dat").replace("Accusative", "Acc")),
+          q.cells[i].map((c, j) => h("td", { class: cell && cell.r === i && cell.c === j ? (mine ? "t-you" : "t-hit") : "" }, O.pDisplay(c))))))),
+      cell ? h("div", { class: "small", style: "margin-top:8px" }, mine ? h("span", null, h("b", { class: "t-youk" }, "Your choice"), " is marked. Does its ending match ", h("span", { class: "greek" }, word), "?")
+        : h("span", null, h("b", { class: "t-hitk" }, "✓ "), h("span", { class: "greek" }, word), " goes in the marked box.")) :
+        h("div", { class: "muted small", style: "margin-top:8px" }, a.chartOn ? "This word's form isn't one box of this chart." : "Check your parsing to see where this word goes."));
+  }
+  function colorChart(extra) {
     const ss = T.session, e2g = ss.dir === "e2g";
     return h("div", { class: "t-side" },
       h("div", { class: "label", style: "margin-top:0" }, "Colors"),
@@ -1077,12 +1250,14 @@
             a.done ? h("div", { class: "small" }, (a.f.kind === "Preposition" ? parseLabel(u, a) : a.f.kind + (fieldsNow(u, a).length ? " · " + parseLabel(u, a) : "")) + (e2g ? " · " : ""), e2g ? h("span", { class: "greek" }, u.greek) : null) :
               h("div", { class: "small muted" }, "🔒 Parse to Reveal")));
       }),
-      h("div", { class: "muted small", style: "margin-top:8px" }, "Colors are random. Labels unlock as you parse."));
+      h("div", { class: "muted small", style: "margin-top:8px" }, "Colors are random. Labels unlock as you parse."),
+      extra || null);
   }
 
   function workspace() {
     const ss = T.session, n = ss.cur, u = ss.units[n], a = ss.ans[n], c = ss.colors[n], e2g = ss.dir === "e2g";
     const forms = unitForms(u), noKey = !forms.length;
+    const one = oneAtATime(), curQ = one ? currentQ(u, a) : null;
     if (!a.open) a.open = {};
     if (!a.closed) a.closed = {};
     const okMark = (k) => (a.ok[k] === true ? h("span", { class: "t-okm" }, "✓") : a.ok[k] === false ? h("span", { class: "t-badm" }, "✕") : h("span", { class: "t-todo" }));
@@ -1091,36 +1266,38 @@
     const compactRow = (k, label, value, valueClass) => h("div", { class: "t-row t-row-c" + (a.ok[k] === false ? " bad" : "") },
       h("div", { class: "t-k" }, okMark(k), label),
       h("button", { class: "t-cval" + (valueClass ? " " + valueClass : ""), style: "color:" + c, onclick: () => { a.open[k] = true; delete a.closed[k]; render(); } }, value, h("span", { class: "t-edit" }, "✎")));
-    const isCompact = (k, filled, needsClose) => filled && !a.open[k] && a.ok[k] !== false && (!needsClose || a.closed[k]);
+    const isCompact = (k, filled, needsClose) => !(one && k === curQ) && filled && !a.open[k] && a.ok[k] !== false && (!needsClose || a.closed[k]);
     const order = e2g ? ["lex", "form"] : ["lex", "mean", "ctx"].filter((k) => !(k === "lex" && noLex(u)) && !(k === "mean" && noMean(u)));
     const focusNext = (from) => {
+      if (one) { checkUnit(); return; }
       const later = order.slice(order.indexOf(from) + 1).find((k) => !(a.f[k] || "").trim());
       if (later) { a.open[later] = true; render(); return; }
       checkUnit();
     };
     const enterText = (k) => () => { if ((a.f[k] || "").trim()) { a.closed[k] = true; delete a.open[k]; } focusNext(k); };
     let focusSet = false;
-    const af = (k) => { if (focusSet || a.ok[k] || ((a.f[k] || "").trim() && !a.open[k])) return false; focusSet = true; return true; };
-    const rows = [];
+    const af = (k) => { if (one) { if (k !== curQ || focusSet) return false; focusSet = true; return true; } if (focusSet || a.ok[k] || ((a.f[k] || "").trim() && !a.open[k])) return false; focusSet = true; return true; };
+    const rows = [], byStep = {};
+    const put = (k, node) => { rows.push(node); byStep[k] = node; };
 
     // What is it?
-    if (isCompact("kind", !!a.f.kind)) rows.push(compactRow("kind", "What is it?", a.f.kind));
-    else rows.push(row("kind", h("span", null, "What is it? ", h("button", { class: "t-qmark", title: "What do these mean?", onclick: kindHelp }, "?")), h("div", { class: "chips" }, E.KINDS.map((k) => h("button", {
+    if (isCompact("kind", !!a.f.kind)) put("kind", compactRow("kind", "What is it?", a.f.kind));
+    else put("kind", row("kind", h("span", null, "What is it? ", h("button", { class: "t-qmark", title: "What do these mean?", onclick: kindHelp }, "?")), h("div", { class: "chips" }, E.KINDS.map((k) => h("button", {
       class: "chip t-chip" + (a.f.kind === k ? " sel" : "") + (a.ok.kind === false && a.f.kind === k ? " wrong" : ""), style: a.f.kind === k ? "color:" + c : "",
-      onclick: () => { const changed = a.f.kind !== k; a.f.kind = k; delete a.ok.kind; delete a.open.kind; if (changed) { delete a.ok.parse; } render(); },
+      onclick: () => { const changed = a.f.kind !== k; a.f.kind = k; delete a.ok.kind; delete a.open.kind; if (changed) { delete a.ok.parse; a.fb = null; } render(); },
     }, k)))));
 
     // Lexical form
     const lexLabel = e2g ? "Greek word" : "Lexical form";
     if (noLex(u)) { /* no lexical-form box */ }
-    else if (isCompact("lex", (a.f.lex || "").trim(), true)) rows.push(compactRow("lex", lexLabel, a.f.lex, "gk"));
-    else rows.push(row("lex", lexLabel, greekIn({ value: a.f.lex || "", placeholder: "dictionary form", autofocus: af("lex") || a.open.lex, oninput: (v) => { a.f.lex = v; delete a.ok.lex; refreshLive(); }, onenter: enterText("lex") }),
+    else if (isCompact("lex", (a.f.lex || "").trim(), true)) put("lex", compactRow("lex", lexLabel, a.f.lex, "gk"));
+    else put("lex", row("lex", lexLabel, greekIn({ value: a.f.lex || "", placeholder: "dictionary form", autofocus: af("lex") || a.open.lex, oninput: (v) => { a.f.lex = v; delete a.ok.lex; refreshLive(); }, onenter: enterText("lex") }),
       h("span", { class: "muted small" }, "the form you'd look up")));
 
     // Meaning
     if (!e2g && !noMean(u)) {
-      if (isCompact("mean", (a.f.mean || "").trim(), true)) rows.push(compactRow("mean", "Dictionary meaning", a.f.mean));
-      else rows.push(row("mean", h("span", null, "Dictionary meaning", h("small", { class: "t-khint" }, "what the dictionary form means")), textIn({ value: a.f.mean || "", placeholder: "e.g. λόγου → “word” (not “of a word”)", autofocus: af("mean") || a.open.mean, oninput: (v) => { a.f.mean = v; delete a.ok.mean; a.override = false; refreshLive(); }, onenter: enterText("mean") }),
+      if (isCompact("mean", (a.f.mean || "").trim(), true)) put("mean", compactRow("mean", "Dictionary meaning", a.f.mean));
+      else put("mean", row("mean", h("span", null, "Dictionary meaning", h("small", { class: "t-khint" }, "what the dictionary form means")), textIn({ value: a.f.mean || "", placeholder: "e.g. λόγου → “word” (not “of a word”)", autofocus: af("mean") || a.open.mean, oninput: (v) => { a.f.mean = v; delete a.ok.mean; a.override = false; refreshLive(); }, onenter: enterText("mean") }),
         a.ok.mean === false && (a.f.mean || "").trim() ? h("button", { class: "btn link", onclick: () => { a.override = true; a.ok.mean = true; render(); } }, "✓ I was right, count it") : null));
     }
 
@@ -1128,7 +1305,7 @@
     const fields = a.f.kind ? fieldsNow(u, a) : [];
     const fieldBox = (fl) => {
       const k = "p:" + fl, v = a.f[fl];
-      if (v && !a.open[k] && a.ok[k] !== false)
+      if (v && !a.open[k] && a.ok[k] !== false && (!one || a.ok[k]))
         return h("button", { class: "t-fpill" + (a.ok[k] ? " ok" : "") + (fl === "case2" || fl === "gender2" ? " t-case2" : ""), style: "color:" + c, onclick: () => { a.open[k] = true; render(); } },
           h("span", { class: "lbl" }, E.FIELDS[fl].name), E.optLabel(fl, v, labelsFull()), h("span", { class: "t-edit" }, "✎"));
       const two = fl === "case2" || fl === "gender2";
@@ -1142,27 +1319,44 @@
     // Only show the parsing box when this kind of word has something to parse
     // (no box at all for words like οὖν, καί, οὐ).
     if (a.f.kind ? fields.length : !noParse(u))
-      rows.push(row("parse", e2g ? "What it needs to be" : "Parse",
+      put("parse", row("parse", e2g ? "What it needs to be" : "Parse",
         !a.f.kind ? h("span", { class: "muted small" }, "Choose what it is first.") : h("div", { class: "t-fields" }, fields.map(fieldBox))));
 
     // In this sentence / write the form
     if (!e2g) {
-      if (isCompact("ctx", (a.f.ctx || "").trim(), true)) rows.push(compactRow("ctx", "In this sentence", a.f.ctx));
-      else rows.push(row("ctx", h("span", null, "In this sentence", h("small", { class: "t-khint" }, "how this exact form reads here")), textIn({ value: a.f.ctx || "", placeholder: "how it reads here, e.g. “of man”", autofocus: af("ctx") || a.open.ctx, oninput: (v) => { a.f.ctx = v; delete a.ok.ctx; refreshLive(); }, onenter: enterText("ctx") }), a.ctxMsg ? h("div", { class: "note t-ctxmsg" }, a.ctxMsg) : null));
+      if (isCompact("ctx", (a.f.ctx || "").trim(), true)) put("ctx", compactRow("ctx", "In this sentence", a.f.ctx));
+      else put("ctx", row("ctx", h("span", null, "In this sentence", h("small", { class: "t-khint" }, "how this exact form reads here")), textIn({ value: a.f.ctx || "", placeholder: "how it reads here, e.g. “of man”", autofocus: af("ctx") || a.open.ctx, oninput: (v) => { a.f.ctx = v; delete a.ok.ctx; refreshLive(); }, onenter: enterText("ctx") }), a.ctxMsg ? h("div", { class: "note t-ctxmsg" }, a.ctxMsg) : null));
     } else {
       const preview = h("div", { class: "t-formprev" });
       const paint = () => { const v = a.f.form || ""; if (!v.trim()) { preview.replaceChildren(); return; } const r = E.restoreSentence(v); preview.replaceChildren(h("span", { class: "muted small" }, "With marks: "), h("span", { class: "greek", style: "font-size:19px" }, r.words.map((w) => [w.segs.map((sg) => sg.add ? h("span", { class: "t-add" }, sg.t) : sg.t), " "]))); };
-      if (isCompact("form", (a.f.form || "").trim(), true)) rows.push(compactRow("form", "Write the form", a.f.form, "gk"));
-      else { rows.push(row("form", "Write the form", greekIn({ value: a.f.form || "", placeholder: u.article ? "article + word" : "the Greek word", autofocus: af("form") || a.open.form, oninput: (v) => { a.f.form = v; delete a.ok.form; paint(); refreshLive(); }, onenter: enterText("form") }), preview)); paint(); }
+      if (isCompact("form", (a.f.form || "").trim(), true)) put("form", compactRow("form", "Write the form", a.f.form, "gk"));
+      else { put("form", row("form", "Write the form", greekIn({ value: a.f.form || "", placeholder: u.article ? "article + word" : "the Greek word", autofocus: af("form") || a.open.form, oninput: (v) => { a.f.form = v; delete a.ok.form; paint(); refreshLive(); }, onenter: enterText("form") }), preview)); paint(); }
     }
-    return h("div", { class: "card pad t-work" + ap("twork", ss.ids[ss.i] + "|" + n) },
+    // One at a time: answered questions shrink into green pills, and only
+    // the question you're on is open. Tap a pill to change that answer.
+    let body = rows;
+    if (one) {
+      const vis = visibleSteps(u, a);
+      const LBL = { kind: "Kind", lex: e2g ? "Greek word" : "Lexical form", mean: "Meaning", parse: e2g ? "Needs to be" : "Parsing", ctx: "In this sentence", form: "Form" };
+      const pillVal = (k) => k === "kind" ? a.f.kind : k === "parse" ? parseLabel(u, a) : a.f[k];
+      const done = vis.filter((k) => a.ok[k] && k !== curQ);
+      body = [
+        done.length ? h("div", { class: "t-pills" }, done.map((k) => h("button", { class: "t-pill", title: "Change this answer",
+          onclick: () => { a.edit = k; a.fb = null; if (k === "parse") { Object.keys(a.ok).forEach((x) => { if (x.startsWith("p:")) delete a.ok[x]; }); } delete a.ok[k]; a.open[k] = true; delete a.closed[k]; render(); } },
+          h("span", { class: "k" }, LBL[k]), h("span", { class: ["lex", "form"].includes(k) ? "greek" : "" }, pillVal(k)), " ✓"))) : null,
+        curQ ? h("div", { class: "t-qn muted small" }, `Question ${vis.indexOf(curQ) + 1} of ${vis.length}`) : null,
+        curQ ? byStep[curQ] : null,
+      ];
+    }
+    return h("div", { class: "card pad t-work" + (one ? " t-one" : "") + ap("twork", ss.ids[ss.i] + "|" + n) },
       h("div", { class: "row wrap" }, h("span", { class: "muted" }, e2g ? "Now building" : "Now parsing"),
         h("span", { class: e2g ? "t-now-en" : "t-now-gk", style: "color:" + c }, e2g ? cueFor(u, n) : u.greek),
         u.article ? h("span", { class: "muted small" }, "with its article") : null,
         ss.s.tokens[u.head] && ss.s.tokens[u.head].note ? h("span", { class: "t-pnote" }, "Professor's note: " + ss.s.tokens[u.head].note) : null,
         h("span", { class: "spacer" }),
         noKey ? h("span", { class: "t-tag warn" }, "No answer key for this word · check it yourself") : null),
-      rows,
+      body,
+      feedbackBox(a),
       h("div", { class: "row wrap", style: "margin-top:12px" },
         h("button", { class: "btn" + (a.hl ? " pri" : ""), style: a.hl ? "" : "color:#b08a00", onclick: () => { a.hl = !a.hl; render(); } }, a.hl ? "★ Highlighted" : "★ Highlight"),
         h("button", { class: "btn", onclick: () => { a.skip = true; ss.hint = null; advance(); } }, "↷ Skip"),
