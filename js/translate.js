@@ -653,7 +653,11 @@
       }
       if (step === "ctx") {
         const t = (a.f.ctx || "").trim();
-        const problem = t ? ctxProblem(u, forms, t) : null;
+        // Does the English fit this exact form? (meaning + person, number, tense, voice)
+        const graded = gradeCtx(u, a, forms, t);
+        a.ctxWhy = graded.ok ? null : graded.why;
+        if (!graded.ok && a.ctxOverride !== t) { mark("ctx", false); a.ctxMsg = null; continue; }
+        const problem = t && a.ctxOverride !== t ? ctxProblem(u, forms, t) : null;
         // A warning, not a hard stop: some verbs take a genitive object, so
         // pressing Check again with the same answer keeps it.
         const keep = problem && a.ctxKeep === t;
@@ -676,6 +680,13 @@
     // One at a time: on to the next question for this word.
     if (one && stepsFor(u).some((k) => !a.ok[k])) { ss.hint = null; render(); return; }
     a.done = true; a.skip = false; ss.hint = null; a.fb = null;
+    // One at a time: show that it's right, then Check becomes Next.
+    if (one) { a.waitNext = true; render(); return; }
+    advance();
+  }
+  function nextWord() {
+    const ss = T.session, a = ss.ans[ss.cur];
+    if (a) a.waitNext = false;
     advance();
   }
   // Tap any word to work on it, including one you already finished. A
@@ -700,7 +711,7 @@
   }
   function openWord(n) {
     const ss = T.session, a = ss.ans[n];
-    if (a.done) { a.done = false; a.reopened = true; a.ok = {}; a.open = {}; a.closed = {}; a.missed = false; a.fb = null; delete a.edit; }
+    if (a.done) { a.done = false; a.reopened = true; a.ok = {}; a.open = {}; a.closed = {}; a.missed = false; a.fb = null; a.waitNext = false; delete a.edit; }
     ss.cur = n; ss.hint = null; ss.phase = "parse"; ss.sideTab = null;
     render();
   }
@@ -718,6 +729,20 @@
   // ---------- Hints ----------
   // Does the English fit the case? Right now: a genitive usually shows up as
   // "of …", "…'s", "from …" or a possessive like "my" or "his".
+  // The meanings to grade against: the dictionary gloss, plus the meaning you gave.
+  function gradeCtx(u, a, forms, text) {
+    if (!text) return { ok: false, why: "Type how this word reads in this sentence." };
+    if (!forms.length || !window.OENG) return { ok: true };
+    let first = null;
+    for (const f of forms) {
+      const kind = E.posName(f.pos);
+      const meanings = (E.gloss(f.lemma) || "").split(/[,;\/]/).concat(a.ok.mean && a.f.mean ? a.f.mean.split(/[,;\/]/) : []);
+      const r = window.OENG.checkCtx(f, kind, meanings, text);
+      if (r.ok) return r;
+      if (!first) first = r;
+    }
+    return first;
+  }
   function ctxProblem(u, forms, text) {
     const f = forms[0];
     if (!f || !f.parse || f.parse[4] !== "G") return null;
@@ -820,7 +845,7 @@
         }
         if (bad.length && good.length) out.push([`${good.map((fl) => E.FIELDS[fl].name).join(" and ").replace(/ and (?=.* and )/g, ", ")} ${good.length === 1 ? "is" : "are"} right.`]);
       }
-      if (step === "ctx" && !(a.f.ctx || "").trim()) out.push(["Type how this word reads in this sentence."]);
+      if (step === "ctx") out.push([(a.f.ctx || "").trim() ? (a.ctxWhy || "That doesn't fit this form.") + " If you're sure it's right, tap “I was right, count it”." : "Type how this word reads in this sentence."]);
       if (step === "form") out.push([(a.f.form || "").trim() ? hintText(u, a, "form", 1) : "Write the Greek form."]);
     }
     return out.length ? out : null;
@@ -1269,7 +1294,8 @@
     const isCompact = (k, filled, needsClose) => !(one && k === curQ) && filled && !a.open[k] && a.ok[k] !== false && (!needsClose || a.closed[k]);
     const order = e2g ? ["lex", "form"] : ["lex", "mean", "ctx"].filter((k) => !(k === "lex" && noLex(u)) && !(k === "mean" && noMean(u)));
     const focusNext = (from) => {
-      if (one) { checkUnit(); return; }
+      // "In this sentence" waits for the Check button.
+      if (one) { if (from === "ctx") return; if (a.waitNext) { nextWord(); return; } checkUnit(); return; }
       const later = order.slice(order.indexOf(from) + 1).find((k) => !(a.f[k] || "").trim());
       if (later) { a.open[later] = true; render(); return; }
       checkUnit();
@@ -1356,13 +1382,15 @@
         h("span", { class: "spacer" }),
         noKey ? h("span", { class: "t-tag warn" }, "No answer key for this word · check it yourself") : null),
       body,
+      a.waitNext ? h("div", { class: "t-okbox", role: "status" }, h("span", { class: "x" }, "✓"), h("div", null, h("b", null, "Right! "), (a.f.ctx || "").trim() ? h("span", null, "“", a.f.ctx.trim(), "”") : null)) : null,
       feedbackBox(a),
       h("div", { class: "row wrap", style: "margin-top:12px" },
         h("button", { class: "btn" + (a.hl ? " pri" : ""), style: a.hl ? "" : "color:#b08a00", onclick: () => { a.hl = !a.hl; render(); } }, a.hl ? "★ Highlighted" : "★ Highlight"),
         h("button", { class: "btn", onclick: () => { a.skip = true; ss.hint = null; advance(); } }, "↷ Skip"),
         h("span", { class: "spacer" }),
-        h("span", { class: "hint keys" }, "Enter moves on"),
-        h("button", { class: "btn pri big", onclick: checkUnit }, "Check")));
+        one && a.ok.ctx === false && (a.f.ctx || "").trim() ? h("button", { class: "btn link", onclick: () => { a.ctxOverride = (a.f.ctx || "").trim(); checkUnit(); } }, "✓ I was right, count it") : null,
+        h("span", { class: "hint keys" }, a.waitNext ? "Enter for the next word" : one && curQ === "ctx" ? "Press Check when you're ready" : "Enter checks this"),
+        a.waitNext ? h("button", { class: "btn pri big", onclick: nextWord }, "Next →") : h("button", { class: "btn pri big", onclick: checkUnit }, "Check")));
   }
 
   // ---------- Step 2: skeleton ----------
@@ -1964,6 +1992,10 @@
   T.keys = (e, typing) => {
     const ss = T.session;
     if (!ss || typing) return;
-    if (e.key === "Enter" && ss.phase === "parse") { e.preventDefault(); checkUnit(); }
+    if (e.key === "Enter" && ss.phase === "parse") {
+      e.preventDefault();
+      const a = ss.ans[ss.cur];
+      if (a && a.waitNext) nextWord(); else checkUnit();
+    }
   };
 })();

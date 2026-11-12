@@ -3,7 +3,7 @@
 const VERSION = "ostraka-web-17";
 const FILES = [
   "./", "index.html", "styles.css", "manifest.webmanifest",
-  "js/paradigms.js", "js/logic.js", "data/practice.js", "js/tengine.js", "js/translate.js", "js/app.js",
+  "js/paradigms.js", "js/logic.js", "data/practice.js", "js/tengine.js", "js/english.js", "js/translate.js", "js/app.js",
   "data/gnt.js", "fonts/Montserrat.woff2", "fonts/Montserrat-Italic.woff2",
   "icon.png", "icons/apple-touch-icon.png", "icons/icon-192.png", "icons/icon-512.png", "icons/icon-maskable-512.png",
 ];
