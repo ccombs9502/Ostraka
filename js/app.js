@@ -47,7 +47,7 @@
     bolt: '<path d="M13.5 2 4.5 13.5h6L9.5 22l9-11.5h-6z" fill="currentColor"/>',
     pin: '<path d="M9 3h6l-1 6 4 4H6l4-4z"/><path d="M12 13v8"/>',
     x: '<path d="M6 6l12 12M18 6 6 18"/>',
-    lambda: '<path d="M6.5 3.5c1.8 0 2.9.8 3.7 2.6L17.8 20.5M11.6 9.2 6 20.5"/>',
+    lambda: '<path stroke-width="2.7" d="M6.3 3.3c1.9 0 3 .8 3.9 2.7l7.9 14.7M11.7 9.3 5.8 20.7"/>',
     lang: '<path d="M3 5h9M7.5 3v2M5 5c.9 3.2 3.2 5.8 6.5 7M10 5c-.9 3.2-3.2 5.8-6.5 7"/><path d="m12.5 21 4.5-10 4.5 10M14 17.5h6"/>',
   };
   const icon = (n) => svg(ICON[n]);
