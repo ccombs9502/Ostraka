@@ -105,7 +105,7 @@
 
   // ---------- Shell ----------
   const SECTIONS = [["home", "Home", "home"], ["vocab", "Vocabulary", "book"], ["translate", "Translate", "lambda"], ["paradigms", "Paradigms", "grid"], ["settings", "Settings", "gear"]];
-  function go(section, practice = false) { st.section = section; st.paradigmPractice = practice; st.pstack = []; render(); }
+  function go(section, practice = false) { st.section = section; st.paradigmPractice = practice; st.pstack = []; if (section === "paradigms") st.pBrowse = false; render(); }
 
   function renderShell() {
     const navBtn = ([id, title, ic]) =>
@@ -904,10 +904,99 @@
 
   // ---------- Paradigms ----------
   let pSelecting = false, pSelected = [];
+  // ---------- Paradigms home: chapter tabs + "How do you want to practice?" ----------
+  const PMODES = [
+    ["chart", "Fill in the chart", "Write every box from memory, then check. Best for learning a new chart."],
+    ["drill", "Drill forms", "One box at a time, like “genitive plural?”. Best for speed."],
+    ["identify", "Identify", "See a form and parse it. Wrong answers explain why. Best practice for translating."],
+  ];
+  const pseg = (opts, cur, set) => h("div", { class: "seg" }, opts.map(([id, t]) => h("button", { class: cur === id ? "on" : "", onclick: () => set(id) }, t)));
+  function paradigmHome() {
+    const all = window.PARADIGMS, cur = O.currentChapter() || 0;
+    const chs = [...new Set(all.map((p) => O.pChapter(p.id)).filter(Boolean))];
+    // Your chapter and the ones before it first (newest first), then later ones.
+    const order = chs.filter((n) => n <= cur).sort((a, b) => b - a).concat(chs.filter((n) => n > cur).sort((a, b) => a - b));
+    if (st.pScope == null || (typeof st.pScope === "number" && !chs.includes(st.pScope))) st.pScope = order[0] ?? "all";
+    const scope = st.pScope;
+    // Your chapter and the three before it as chips; the rest in a menu.
+    const recent = order.slice(0, 4);
+    if (typeof scope === "number" && !recent.includes(scope)) recent.push(scope);
+    const more = order.filter((n) => !recent.includes(n));
+    const ids = scope === "pick" ? (st.pPicked || []) : scope === "all" ? all.map((p) => p.id) : all.filter((p) => O.pChapter(p.id) === scope).map((p) => p.id);
+    const ps = ids.map(O.pById).filter(Boolean);
+    const done = ps.filter((p) => O.data.pDone[p.id]).length;
+    const cats = [...new Set(ps.map((p) => p.category))];
+    const title = scope === "pick" ? `${ps.length} picked chart${ps.length === 1 ? "" : "s"}` : scope === "all" ? "All charts" : `Chapter ${scope}` + (cats.length === 1 ? " · " + cats[0] : "");
+    const mode = S.paradigmMode || "chart";
+    const chip = (k, label) => h("button", { class: "chip" + (scope === k ? " on" : ""), onclick: () => { st.pScope = k; st.pPreview = null; render(); } }, label);
+    const choice = ([k, t, d]) => h("button", { class: "card how" + (mode === k ? " on" : ""), role: "radio", "aria-checked": mode === k ? "true" : "false", onclick: () => { O.set("paradigmMode", k); render(); } },
+      h("span", { class: "radio" }), h("span", null, h("b", null, t), h("span", { class: "muted small" }, k === "drill" && ps[0] ? `One box at a time, like “genitive plural of ${ps[0].lemma.split(",")[0]}?”. Best for speed.` : d)));
+    const start = () => { if (ps.length) practiceParadigms(ids, typeof scope === "number" ? scope : null, typeof scope === "number" ? "Chapter " + scope : title); };
+    const prev = O.pById(st.pPreview) || ps[0];
+    const listRow = (p) => {
+      const isPin = S.pinnedParadigms.includes(p.id), ok = !!O.data.pDone[p.id];
+      return h("div", { class: "li p-li" + (prev && prev.id === p.id ? " on" : ""), onclick: () => { st.pPreview = p.id; render(); } },
+        h("span", { class: "p-ck" + (ok ? " y" : ""), title: ok ? "Mastered" : "Not mastered yet" }, ok ? "✓" : ""),
+        h("span", { class: "gk", style: "min-width:70px" }, p.lemma.split(",")[0]), h("span", { class: "muted small" }, p.title), h("span", { class: "spacer" }),
+        h("button", { class: "icon-btn" + (isPin ? " on" : ""), title: isPin ? "Unpin" : "Pin to top", onclick: (e) => { e.stopPropagation(); togglePinParadigm(p.id); } }, pinIcon(isPin)));
+    };
+    const preview = prev ? h("div", { class: "card pad p-prev" },
+      h("div", { class: "row", style: "margin-bottom:6px" }, h("b", { class: "gk", style: "font-size:18px" }, prev.lemma.split(",")[0]), h("span", { class: "muted small" }, prev.title), h("span", { class: "spacer" }),
+        h("button", { class: "btn link", onclick: () => { st.pstack.push({ view: "ref", id: prev.id }); render(); } }, "Open →")),
+      h("div", { class: "scroll-x" }, h("table", { class: "ref t-mini" },
+        h("tr", null, h("th", null, ""), prev.columns.map((c) => h("th", null, c))),
+        prev.rows.map((rl, r) => h("tr", null, h("td", { class: "rl" }, rl), prev.columns.map((_, c) => { const parts = O.pSplit(prev, r, c); return h("td", null, parts.stem, h("span", { class: "end" }, parts.ending)); })))))) : null;
+    return {
+      title: "Paradigms",
+      tools: h("button", { class: "btn", onclick: () => { st.pBrowse = true; render(); } }, "🔍 All charts"),
+      body: h("div", { class: "p-wrap" },
+        h("div", { class: "stack" },
+          h("div", { class: "chips" }, recent.map((n) => chip(n, "Chapter " + n)), chip("all", "All charts"),
+            more.length ? h("select", { class: "chip-sel", "aria-label": "Other chapter", onchange: (e) => { if (e.target.value) { st.pScope = +e.target.value; st.pPreview = null; render(); } } },
+              h("option", { value: "" }, "Other chapter"), more.slice().sort((a, b) => a - b).map((n) => h("option", { value: n }, "Chapter " + n))) : null,
+            scope === "pick" ? h("button", { class: "chip on", onclick: () => pickCharts() }, "✓ " + title) : null,
+            h("button", { class: "chip new", onclick: () => pickCharts() }, "☑ Pick charts…")),
+          h("div", { class: "card pad" }, h("div", { class: "row" }, h("b", { style: "font-size:17px" }, `${title} · ${ps.length} chart${ps.length === 1 ? "" : "s"}`), h("span", { class: "spacer" }),
+            h("span", { class: "badge ok" }, done + " mastered")), h("div", { class: "hbar", style: "margin-top:10px" }, h("i", { style: `width:${ps.length ? Math.round((done / ps.length) * 100) : 0}%` })),
+            h("div", { class: "muted small", style: "margin-top:6px" }, "A chart is mastered when you fill it in all right once.")),
+          h("div", { class: "label", style: "margin:4px 0 0" }, "How do you want to practice?"),
+          h("div", { class: "stack", role: "radiogroup", style: "gap:10px" }, PMODES.map(choice)),
+          h("div", { class: "row wrap" },
+            mode !== "identify" ? h("div", { class: "row", style: "gap:8px" }, h("span", { class: "muted" }, "Answer with"), pseg([[false, "Whole form"], [true, "Endings only"]], S.paradigmEndings, (v) => { O.set("paradigmEndings", v); render(); })) : null,
+            h("span", { class: "spacer" }),
+            h("button", { class: "btn pri big", disabled: !ps.length || null, onclick: start }, ps.length ? `Start · ${ps.length} chart${ps.length === 1 ? "" : "s"}` : "Pick some charts"))),
+        h("div", { class: "stack" },
+          h("div", { class: "card list" }, h("div", { class: "li", style: "cursor:default" }, h("b", null, scope === "all" ? "Every chart" : "Charts in " + (typeof scope === "number" ? "Chapter " + scope : "your pick")), h("span", { class: "spacer" }), h("span", { class: "muted small" }, "tap to preview")),
+            ps.map(listRow)),
+          preview)),
+    };
+  }
+  // Choose exactly which charts to practice.
+  function pickCharts() {
+    let picked = new Set(st.pScope === "pick" ? st.pPicked || [] : typeof st.pScope === "number" ? window.PARADIGMS.filter((p) => O.pChapter(p.id) === st.pScope).map((p) => p.id) : []);
+    openModal(() => h("div", { class: sheetClass() },
+      h("div", { class: "body stack" },
+        h("div", { style: "font-size:22px;font-weight:700" }, "Pick charts"),
+        h("div", { class: "muted" }, "Choose exactly the charts you want to practice together."),
+        O.pCategories().map((cat) => {
+          const items = window.PARADIGMS.filter((p) => p.category === cat), allOn = items.every((p) => picked.has(p.id));
+          return [h("div", { class: "sec-h" }, cat, h("span", { class: "spacer" }), h("button", { class: "btn link", onclick: () => { items.forEach((p) => (allOn ? picked.delete(p.id) : picked.add(p.id))); render(); } }, allOn ? "None" : "All")),
+            h("div", { class: "list" }, items.map((p) => h("div", { class: "li", onclick: () => { picked.has(p.id) ? picked.delete(p.id) : picked.add(p.id); render(); } },
+              h("span", { style: "font-size:18px;color:" + (picked.has(p.id) ? "var(--accent)" : "var(--muted)") }, picked.has(p.id) ? "●" : "○"),
+              h("span", { class: "gk", style: "min-width:80px" }, p.lemma.split(",")[0]), h("span", { class: "muted small" }, p.title), h("span", { class: "spacer" }),
+              O.pChapter(p.id) ? h("span", { class: "muted small" }, "Chap. " + O.pChapter(p.id)) : null)))];
+        })),
+      h("div", { class: "foot" },
+        h("button", { class: "btn", onclick: closeModal }, "Cancel"),
+        h("button", { class: "btn pri", disabled: !picked.size || null, onclick: () => { st.pPicked = window.PARADIGMS.map((p) => p.id).filter((id) => picked.has(id)); st.pScope = "pick"; st.pPreview = null; closeModal(); } },
+          picked.size ? `Use ${picked.size} chart${picked.size === 1 ? "" : "s"}` : "Pick some charts"))));
+  }
+
   function viewParadigms() {
     const top = st.pstack[st.pstack.length - 1];
     if (top && top.view === "ref") return paradigmReference(O.pById(top.id));
     if (top && top.view === "practice") return paradigmPractice(top.ids.map(O.pById));
+    if (!st.pBrowse) return paradigmHome();
     const pinned = S.pinnedParadigms.map(O.pById).filter(Boolean);
     const row = (p) => {
       const isPin = S.pinnedParadigms.includes(p.id), on = pSelected.includes(p.id), ch = O.pChapter(p.id);
@@ -929,8 +1018,9 @@
     });
     const order = window.PARADIGMS.map((p) => p.id);
     return {
-      title: st.paradigmPractice ? "Paradigm Practice" : "Paradigms",
-      tools: h("button", { class: "btn", onclick: () => { pSelecting = !pSelecting; pSelected = []; render(); } }, pSelecting ? "Done" : "Select"),
+      title: "All charts",
+      tools: [h("button", { class: "btn", onclick: () => { pSelecting = !pSelecting; pSelected = []; render(); } }, pSelecting ? "Done" : "Select"),
+        h("button", { class: "btn", onclick: () => { st.pBrowse = false; pSelecting = false; render(); } }, "‹ By chapter")],
       body: h("div", null,
         h("div", { class: "muted small" }, st.paradigmPractice ? "Tap a chart to practice it, or tap Select to practice several together." : "Tap a chart to view it. To practice, open it and tap Practice, or tap Select to practice several together."),
         pinned.length ? [h("div", { class: "sec-h" }, "📌 Pinned"), h("div", { class: "list" }, pinned.map(row))] : null,
@@ -1096,8 +1186,36 @@
       ps.length > 1 ? chips(ps.map(O.pLabel), pk.p, (i) => { pk.p = i; pk.r = pk.c = null; }) : null,
       pk.p != null ? [chips(chart.rows, pk.r, (i) => { pk.r = i; }), chips(chart.columns, pk.c, (i) => { pk.c = i; })] : null,
       s.result !== undefined ? h("div", { class: "center" + ap("idres", s.answered), style: `font-weight:700;color:var(--${s.result ? "ok" : "bad"})` }, (s.result ? "✓ Correct: " : "✕ It's ") + matches.map(describe).join(" or ")) : null,
+      s.result === false ? identifyWhy(ps, pk, matches, shown) : null,
       s.result === undefined ? h("button", { class: "btn pri big", style: "margin:0 auto;min-width:200px", disabled: pk.p == null || pk.r == null || pk.c == null, onclick: check }, "Check")
         : h("button", { class: "btn pri big", style: "margin:0 auto;min-width:200px", onclick: next }, "Continue")];
+  }
+
+  // Identify: why your box was wrong, with your choice (gold) and the right box (green) marked.
+  function identifyWhy(ps, pk, matches, shown) {
+    const chart = ps[pk.p];
+    if (!chart || pk.r == null || pk.c == null) return null;
+    const yours = O.pDisplay(chart.cells[pk.r][pk.c]);
+    const inChart = matches.filter(([a]) => a === pk.p);
+    const rowOk = inChart.some(([, b]) => b === pk.r), colOk = inChart.some(([, , d]) => d === pk.c);
+    const lines = [h("div", null, "The box you picked is ", h("b", { class: "greek" }, yours), ". Compare its ending with ", h("span", { class: "greek" }, shown), ".")];
+    // Wrong chart: show the chart the form really comes from.
+    const other = !inChart.length && matches.length ? ps[matches[0][0]] : null;
+    if (other) lines.push(h("div", null, "It isn't in the ", h("span", { class: "greek" }, chart.lemma.split(",")[0]), " chart at all. Look at the stem: it's ", h("span", { class: "greek" }, other.lemma.split(",")[0]), "."));
+    const showChart = other || chart, marks = other ? matches.filter(([a]) => a === matches[0][0]) : inChart;
+    if (rowOk && !colOk) lines.push(h("div", null, `${chart.rows[pk.r]} is right; the column isn't.`));
+    if (colOk && !rowOk) lines.push(h("div", null, `${chart.columns[pk.c]} is right; the row isn't.`));
+    const show = S.tExplain !== false;
+    return h("div", { class: "stack", style: "gap:10px;max-width:560px;margin:0 auto;width:100%" },
+      show ? h("div", { class: "t-fb" }, h("span", { class: "x" }, "✕"), h("div", { class: "stack", style: "gap:4px" }, lines)) : null,
+      h("div", { class: "card pad" }, h("div", { class: "row", style: "margin-bottom:6px" }, h("b", { class: "greek" }, showChart.lemma.split(",")[0]), h("span", { class: "muted small" }, showChart.title), h("span", { class: "spacer" }),
+        other ? null : h("span", { class: "small t-youk", style: "font-weight:700" }, "Your choice"), h("span", { class: "small t-hitk", style: "font-weight:700;margin-left:8px" }, "Right box")),
+        h("div", { class: "scroll-x" }, h("table", { class: "ref t-mini" },
+          h("tr", null, h("th", null, ""), showChart.columns.map((c) => h("th", null, c))),
+          showChart.rows.map((rl, r) => h("tr", null, h("td", { class: "rl" }, rl), showChart.columns.map((_, c) => {
+            const hit = marks.some(([, b, d]) => b === r && d === c), you = !other && r === pk.r && c === pk.c;
+            return h("td", { class: hit ? "t-hit" : you ? "t-you" : "" }, O.pDisplay(showChart.cells[r][c]));
+          })))))));
   }
 
   // ---------- Add Words ----------
