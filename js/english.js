@@ -72,9 +72,11 @@
       .replace(/\bye\b/g, "you all").replace(/\byou guys\b/g, "you all").replace(/\ball of you\b/g, "you all")
       .replace(/\byou\s*\(\s*(pl|plural|all)\.?\s*\)/g, "you all").replace(/\byour\s*\(\s*(pl|plural)\.?\s*\)/g, "your all")
       .replace(/'ll\b/g, " will").replace(/n't\b/g, " not").replace(/'s\b/g, " 's").replace(/'re\b/g, " are").replace(/'ve\b/g, " have").replace(/'m\b/g, " am").replace(/'d\b/g, " would")
-      .replace(/[\/,;:()\[\]."!?\u2014\u2013]|--/g, " ").split(/\s+/).map((x) => (x === "'s" ? x : x.replace(/^'+|'+$/g, ""))).filter(Boolean);
+      .replace(/[,;:]/g, " , ").replace(/[\/()\[\]."!?\u2014\u2013]|--/g, " ").split(/\s+/).map((x) => (x === "'s" ? x : x.replace(/^'+|'+$/g, ""))).filter(Boolean);
   }
   const has = (w, ...xs) => xs.some((x) => w.includes(x));
+  // Words that start a new clause: helpers before one of these belong to another verb.
+  const CLAUSE = new Set([",", "and", "but", "that", "because", "while", "after", "when", "who", "which", "if", "so", "for", "since", "before", "until", "as", "whom", "where"]);
   function subject(w) {
     const s = w.join(" ");
     if (/\byou all\b/.test(s)) return "2P";
@@ -90,6 +92,7 @@
 
   // Find which meaning the English uses, and how that verb is written.
   function findVerb(w, heads) {
+    w = w.filter((x) => x !== ",");
     for (const hd of heads) {
       const f = forms(hd);
       for (let i = 0; i < w.length; i++) {
@@ -106,23 +109,44 @@
 
   // ---------- Verbs ----------
   function checkVerb(parse, lemma, meanings, text) {
-    const w = words(text);
+    const all = words(text), w = all.filter((x) => x !== ",");
     const heads = verbHeads(meanings);
     const v = findVerb(w, heads);
     if (!v) return { ok: false, why: `Use one of its meanings: ${listOf(meanings)}.` };
-    const [p, t, voice, mood] = [parse[0], parse[1], parse[2], parse[3]];
+    let [p, t, voice, mood] = [parse[0], parse[1], parse[2], parse[3]];
+    const L0 = lemma.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    // οἶδα is perfect in form but means "I know" (pluperfect "I knew").
+    if (L0 === "οιδα") t = t === "X" ? "P" : t === "Y" ? "I" : t;
     const num = parse[5];
-    const before = w.slice(0, v.i), isCat = (c) => v.cats.includes(c);
+    // Helpers count only inside this verb's own clause ("while he was speaking, a Pharisee asks").
+    let k = v.i, idx = -1;
+    for (let j = 0, m = 0; j < all.length; j++) { if (all[j] === ",") continue; if (m === v.i) { idx = j; break; } m++; }
+    let startC = 0;
+    for (let j = idx - 1; j >= 0; j--) if (CLAUSE.has(all[j])) { startC = j + 1; break; }
+    const before = all.slice(startC, idx).filter((x) => x !== ","), isCat = (c) => v.cats.includes(c);
+    const anyIn = (...xs) => xs.some((x) => w.includes(x));
     const auxIn = (...xs) => before.some((x) => xs.includes(x));
     // The subject is the pronoun before the verb ("they take it", not "it").
-    const subj = subject(w.slice(0, v.i));
+    let subj = subject(before.length ? before : w.slice(0, v.i));
+    if (before.includes("let") && before.includes("us")) subj = "1P";   // "let us eat"
+    // Questions put the subject after the helper or verb: "are you …?", "do you know …?"
+    if (!subj) { const after = subject(w.slice(v.i + 1, v.i + 3)); if (after && (v.i === 0 || ["do", "does", "did", "are", "is", "am", "will", "have", "has", "can", "how", "why", "what", "where"].includes(w[0]))) subj = after; }
     // Middle/passive deponents (ἔρχομαι, ἀποκρίνομαι) read as active.
     const deponent = /(μαι|ομαι)$/.test(lemma.normalize("NFD").replace(/[̀-ͯ]/g, ""));
     const passive = voice === "P" && !deponent && v.head !== "be";
     const beforeBe = before.filter((x) => BE.has(x));
 
     // Person and number (finite moods).
-    if ("123".includes(p) && ["I", "S", "O"].includes(mood)) {
+    // Subjunctive / optative: only catch a clash ("I" for "we"); "let us …", "do not …" need no pronoun.
+    if ("123".includes(p) && ["S", "O"].includes(mood)) {
+      const want = p + num;
+      if (subj && subj !== want && !(want === "2P" && subj === "2S" && false)) {
+        if (want === "2P" && subj === "2S") return { ok: false, why: "This verb is plural. “You” alone reads as one person, so write “you all” (or y'all)." };
+        return { ok: false, why: `This verb is ${p === "1" ? "1st" : p === "2" ? "2nd" : "3rd"} person ${num === "P" ? "plural" : "singular"}: “${PERSON[want]} …”, not “${PERSON[subj]} …”.` };
+      }
+      return { ok: true };
+    }
+    if ("123".includes(p) && mood === "I") {
       const want = p + num;
       if (subj && subj !== want) {
         if (want === "2P" && subj === "2S") return { ok: false, why: "This verb is plural. “You” alone reads as one person, so write “you all” (or y'all)." };
@@ -137,12 +161,15 @@
         if (num === "P" && isCat("s3") && !isCat("base")) return { ok: false, why: `This verb is plural (they): “${v.f.base[0]}”, not “${v.f.s3[0]}”.` };
       }
     }
+    // Clauses that turn an infinitive or participle into a full English clause
+    // (“before you ask”, “after he cried out”, “so that he was no longer…”).
+    const SUB = ["before", "after", "while", "when", "because", "since", "so", "that", "until", "as", "who", "which", "whom", "the", "one", "ones", "may", "let", "in", "with"];
     if (mood === "N") {
-      return w[v.i - 1] === "to" || isCat("ing") || before.includes("to") ? { ok: true } : { ok: false, why: "This is an infinitive: “to …”." };
+      return w[v.i - 1] === "to" || isCat("ing") || before.includes("to") || anyIn(...SUB) ? { ok: true } : { ok: false, why: "This is an infinitive: “to …” (or a clause like “before he …”)." };
     }
     if (mood === "P") {
-      const okP = isCat("ing") || (isCat("pp") && (passive || before.includes("having") || before.includes("been"))) || before.some((x) => ["who", "which", "that", "when", "while", "after", "as", "since", "because"].includes(x));
-      return okP ? { ok: true } : { ok: false, why: "This is a participle: “…ing” (or “the one who …”, “while …”)." };
+      const okP = isCat("ing") || isCat("pp") || before.includes("to") || before.includes("having") || anyIn(...SUB) || before.some((x) => BE.has(x));
+      return okP ? { ok: true } : { ok: false, why: "This is a participle: “…ing” (or “the one who …”, “after he …”, “while …”)." };
     }
     if (mood === "M") {
       if (auxIn("will", "shall")) return { ok: false, why: "This is a command, not the future: just “…!” (or “let him …”)." };
@@ -174,12 +201,16 @@
     const be = v.head === "be";
     const prog = isCat("ing") && beforeBe.length;
     let ok;
-    if (t === "P") ok = !will && !hadAux && !wasWere && !auxIn("did") && !(haveAux && isCat("pp") && !isCat("pres")) &&
+    // Historical present: Greek stories often say "he says" where English says "he said".
+    const HIST = ["λεγω", "ερχομαι", "ερωταω", "αγω", "φερω", "βλεπω", "λαλεω", "κραζω"];
+    if (t === "P" && p === "3" && HIST.includes(L0) && isCat("past") && !will && !haveAux && !hadAux && !beforeBe.length) ok = true;
+    else if (t === "P") ok = !will && !hadAux && !wasWere && !auxIn("did") && !(haveAux && isCat("pp") && !isCat("pres")) &&
       (be ? isCat("pres") : (isCat("pres") || (prog && amIsAre) || (auxIn("do", "does") && isCat("base"))));
     else if (t === "I") ok = !will && (be ? isCat("past") : ((prog && wasWere) || before.includes("used") || before.includes("kept") || before.includes("began") || before.includes("would") || (isCat("past") && !haveAux && !hadAux)));
     else if (t === "F") ok = will && (isCat("base") || (prog && before.includes("be")));
     else if (t === "A") ok = !will && !haveAux && !hadAux && !(prog && wasWere) && ((isCat("past") && !beforeBe.length) || (be && isCat("past")) || (auxIn("did") && isCat("base")));
-    else if (t === "X") ok = haveAux && isCat("pp");
+    // Perfect: "has taken" (your professor sometimes writes the simple past, "I spoke").
+    else if (t === "X") ok = (haveAux && isCat("pp")) || (isCat("past") && !will && !beforeBe.length && !hadAux);
     else if (t === "Y") ok = hadAux && isCat("pp");
     else ok = true;
     if (!ok) {
