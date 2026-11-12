@@ -621,6 +621,7 @@
     if (!a.closed) a.closed = {};
     a.tries++;
     let allOk = true;
+    const wasOk = { ...a.ok };
     const mark = (k, ok) => { a.ok[k] = !!ok; if (!ok) allOk = false; };
     const one = oneAtATime();
     const q = one ? currentQ(u, a) : null;
@@ -669,6 +670,9 @@
     }
     // A word with nothing to parse (καί, οὖν) passes the parsing step on its own.
     if (a.ok.kind && !fieldsNow(u, a).length) a.ok.parse = true;
+    // Everything that just turned right gets a green sweep (see sweep()).
+    const fresh = Object.keys(a.ok).filter((k) => a.ok[k] && !wasOk[k]);
+    ss.flash = fresh.length ? { n, keys: fresh, at: performance.now() } : null;
     // English → Greek: the chart would give away the form you're about to write.
     if (todo.includes("parse") && ss.dir !== "e2g") a.chartOn = true;
     a.fb = allOk ? null : explain(u, a, todo.filter((k) => a.ok[k] === false));
@@ -1288,9 +1292,17 @@
     const okMark = (k) => (a.ok[k] === true ? h("span", { class: "t-okm" }, "✓") : a.ok[k] === false ? h("span", { class: "t-badm" }, "✕") : h("span", { class: "t-todo" }));
     const row = (k, label, control, extra) => h("div", { class: "t-row" + (a.ok[k] === false ? " bad" : "") }, h("div", { class: "t-k" }, okMark(k), label), h("div", { class: "t-v" }, control, extra || null));
     // A finished question shrinks to one line to make room; tap ✎ to change it.
+    // A green sweep, left to right, over an answer that just turned right.
+    // Redraws pick the animation up where it was instead of restarting it.
+    const sweep = (k) => {
+      const f = ss.flash;
+      if (!f || f.n !== n || !f.keys.includes(k)) return null;
+      const el = performance.now() - f.at;
+      return el < 1100 ? { cls: " t-sweep", style: `--sweep-delay:-${Math.round(el)}ms;` } : null;
+    };
     const compactRow = (k, label, value, valueClass) => h("div", { class: "t-row t-row-c" + (a.ok[k] === false ? " bad" : "") },
       h("div", { class: "t-k" }, okMark(k), label),
-      h("button", { class: "t-cval" + (valueClass ? " " + valueClass : ""), style: "color:" + c, onclick: () => { a.open[k] = true; delete a.closed[k]; render(); } }, value, h("span", { class: "t-edit" }, "✎")));
+      h("button", { class: "t-cval" + (valueClass ? " " + valueClass : "") + ((sweep(k) || {}).cls || ""), style: "color:" + c + ";" + ((sweep(k) || {}).style || ""), onclick: () => { a.open[k] = true; delete a.closed[k]; render(); } }, value, h("span", { class: "t-edit" }, "✎")));
     const isCompact = (k, filled, needsClose) => !(one && k === curQ) && filled && !a.open[k] && a.ok[k] !== false && (!needsClose || a.closed[k]);
     const order = e2g ? ["lex", "form"] : ["lex", "mean", "ctx"].filter((k) => !(k === "lex" && noLex(u)) && !(k === "mean" && noMean(u)));
     const focusNext = (from) => {
@@ -1332,7 +1344,7 @@
     const fieldBox = (fl) => {
       const k = "p:" + fl, v = a.f[fl];
       if (v && !a.open[k] && a.ok[k] !== false && (!one || a.ok[k]))
-        return h("button", { class: "t-fpill" + (a.ok[k] ? " ok" : "") + (fl === "case2" || fl === "gender2" ? " t-case2" : ""), style: "color:" + c, onclick: () => { a.open[k] = true; render(); } },
+        return h("button", { class: "t-fpill" + (a.ok[k] ? " ok" : "") + (fl === "case2" || fl === "gender2" ? " t-case2" : "") + ((sweep(k) || {}).cls || ""), style: "color:" + c + ";" + ((sweep(k) || {}).style || ""), onclick: () => { a.open[k] = true; render(); } },
           h("span", { class: "lbl" }, E.FIELDS[fl].name), E.optLabel(fl, v, labelsFull()), h("span", { class: "t-edit" }, "✎"));
       const two = fl === "case2" || fl === "gender2";
       return h("div", { class: "t-field" + (a.ok[k] === false ? " bad" : "") + (two ? " t-case2" : "") },
@@ -1367,7 +1379,7 @@
       const pillVal = (k) => k === "kind" ? a.f.kind : k === "parse" ? parseLabel(u, a) : a.f[k];
       const done = vis.filter((k) => a.ok[k] && k !== curQ);
       body = [
-        done.length ? h("div", { class: "t-pills" }, done.map((k) => h("button", { class: "t-pill", title: "Change this answer",
+        done.length ? h("div", { class: "t-pills" }, done.map((k) => h("button", { class: "t-pill" + ((sweep(k) || {}).cls || ""), style: (sweep(k) || {}).style || null, title: "Change this answer",
           onclick: () => { a.edit = k; a.fb = null; if (k === "parse") { Object.keys(a.ok).forEach((x) => { if (x.startsWith("p:")) delete a.ok[x]; }); } delete a.ok[k]; a.open[k] = true; delete a.closed[k]; render(); } },
           h("span", { class: "k" }, LBL[k]), h("span", { class: ["lex", "form"].includes(k) ? "greek" : "" }, pillVal(k)), " ✓"))) : null,
         curQ ? h("div", { class: "t-qn muted small" }, `Question ${vis.indexOf(curQ) + 1} of ${vis.length}`) : null,
@@ -1382,7 +1394,7 @@
         h("span", { class: "spacer" }),
         noKey ? h("span", { class: "t-tag warn" }, "No answer key for this word · check it yourself") : null),
       body,
-      a.waitNext ? h("div", { class: "t-okbox", role: "status" }, h("span", { class: "x" }, "✓"), h("div", null, h("b", null, "Right! "), (a.f.ctx || "").trim() ? h("span", null, "“", a.f.ctx.trim(), "”") : null)) : null,
+      a.waitNext ? h("div", { class: "t-okbox" + ((sweep("ctx") || sweep("form") || {}).cls || ""), style: (sweep("ctx") || sweep("form") || {}).style || null, role: "status" }, h("span", { class: "x" }, "✓"), h("div", null, h("b", null, "Right! "), (a.f.ctx || "").trim() ? h("span", null, "“", a.f.ctx.trim(), "”") : null)) : null,
       feedbackBox(a),
       h("div", { class: "row wrap", style: "margin-top:12px" },
         h("button", { class: "btn" + (a.hl ? " pri" : ""), style: a.hl ? "" : "color:#b08a00", onclick: () => { a.hl = !a.hl; render(); } }, a.hl ? "★ Highlighted" : "★ Highlight"),

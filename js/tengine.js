@@ -52,11 +52,12 @@
   function build() {
     const G = window.GNT;
     E.forms = G.forms; E.lemmas = G.lemmas; E.glosses = G.glosses; E.verses = G.verses;
-    // MorphGNT leaves person off ἐγώ and σύ; add it so it can be asked and checked.
+    // MorphGNT leaves person off the personal and reflexive pronouns; grammars
+    // parse them with one (αὐτοῖς: 3rd person dative plural), so add it.
+    const PERSON = { "ἐγώ": "1", "κἀγώ": "1", "ἐμαυτοῦ": "1", "σύ": "2", "σεαυτοῦ": "2", "αὐτός": "3", "ἑαυτοῦ": "3" };
     G.forms.forEach((f) => {
       if (f[2] !== "RP" || f[3][0] !== "-") return;
-      const L = G.lemmas[f[1]];
-      const person = L === "ἐγώ" ? "1" : L === "σύ" ? "2" : null;
+      const person = PERSON[G.lemmas[f[1]].normalize("NFC")] || null;
       if (person) f[3] = person + f[3].slice(1);
     });
     // How often each lemma is tagged as each kind across the NT (for kindsFor).
