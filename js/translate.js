@@ -1505,7 +1505,7 @@
     const ss = T.session, u = ss.units[n], f = unitForms(u)[0];
     if (!f) return { n, given: !!u.given };
     const pos = E.posName(f.pos), p = f.parse || "--------";
-    return { n, pos, raw: f.pos, lemma: E.fw(f.lemma), mood: p[3], cas: p[4], num: p[5], gen: p[6], pron: pos === "Pronoun",
+    return { n, pos, raw: f.pos, lemma: E.fw(f.lemma), voice: p[2], art: !!u.article, mood: p[3], cas: p[4], num: p[5], gen: p[6], pron: pos === "Pronoun",
       nominal: ["Noun", "Pronoun", "Adjective", "Article"].includes(pos), finite: pos === "Verb" && "ISDO".includes(p[3]), verbal: pos === "Verb" && "PN".includes(p[3]) };
   }
   const POSTPOS = ["δε", "γαρ", "ουν"];
@@ -1516,12 +1516,14 @@
     const ss = T.session, N = ss.units.length, I = ss.units.map((u, n) => uInfo(n)), e2g = ss.dir === "e2g";
     const g = (n) => ss.units[n].greek;
     const rules = [];
+    // The next word, skipping a δέ / γάρ / οὖν tucked in second (ἐν δὲ τῷ…, οὐ γάρ ἐστιν…).
+    const nextOf = (n) => { let m = n + 1; while (m < N && I[m].pos === "Conjunction" && POSTPOS.includes(I[m].lemma)) m++; return m < N ? m : -1; };
     const inPrep = new Set();
-    I.forEach((x, n) => { if (x.pos === "Preposition" && n + 1 < N) inPrep.add(n + 1); });
+    I.forEach((x, n) => { const m = nextOf(n); if (x.pos === "Preposition" && m >= 0) inPrep.add(m); });
     // A preposition comes right before its object.
-    I.forEach((x, n) => { if (x.pos === "Preposition" && n + 1 < N) rules.push({ units: [n, n + 1], ok: (P) => P[n + 1] === P[n] + 1, msg: `Keep ${g(n)} right before ${g(n + 1)}. A preposition goes with its object.` }); });
+    I.forEach((x, n) => { const m = nextOf(n); if (x.pos === "Preposition" && m >= 0) rules.push({ units: [n, m], ok: (P) => P[m] === P[n] + 1, msg: `Keep ${g(n)} right before ${g(m)}. A preposition goes with its object.` }); });
     // οὐ / μή stays right before the word it makes negative.
-    I.forEach((x, n) => { if (NEG.includes(x.lemma) && n + 1 < N) rules.push({ units: [n, n + 1], ok: (P) => P[n + 1] === P[n] + 1, msg: `Keep ${g(n)} right before ${g(n + 1)}; it makes that word negative.` }); });
+    I.forEach((x, n) => { const m = nextOf(n); if (NEG.includes(x.lemma) && m >= 0) rules.push({ units: [n, m], ok: (P) => P[m] === P[n] + 1, msg: `Keep ${g(n)} right before ${g(m)}; it makes that word negative.` }); });
     // Conjunctions at the start of the Greek sentence.
     I.forEach((x, n) => {
       if (n > 1 || x.pos !== "Conjunction" || !FRONT.includes(x.lemma)) return;
@@ -1533,6 +1535,12 @@
     // A genitive noun ("of God") goes right after the word it describes.
     I.forEach((x, n) => {
       if (!x.nominal || x.pron || x.cas !== "G" || inPrep.has(n) || n === 0) return;
+      // Right after a noun in the Greek (υἱοὶ θεοῦ): it belongs to that noun, so keep them together.
+      const head = I[n - 1];
+      if (head && head.nominal && head.pos !== "Article" && !head.pron) {
+        rules.push({ units: [n - 1, n], ok: (P) => P[n] === P[n - 1] + 1, msg: `${g(n)} (“of …”) describes ${g(n - 1)}. Keep it right after ${g(n - 1)}.` });
+        return;
+      }
       rules.push({ units: [n], ok: (P, ord) => { const prev = P[n] > 0 ? I[ord[P[n] - 1]] : null; return !!prev && (prev.nominal || prev.given); }, msg: `${g(n)} is genitive (“of …”). Put it right after the word it describes.` });
     });
     if (!e2g) {
@@ -1547,10 +1555,30 @@
         const seg = I.slice(st, end);
         const fin = seg.filter((x) => x.finite);
         if (fin.length !== 1) return;
-        const v = fin[0].n, copula = ["ειμι", "γινομαι"].includes(fin[0].lemma);
+        // Linking verbs: "is", "becomes", and passives like "is called / named".
+        const fv = fin[0], v = fv.n;
+        const copula = ["ειμι", "γινομαι", "υπαρχω"].includes(fv.lemma) || (fv.voice === "P" && ["καλεω", "ονομαζω", "λεγω", "ευρισκω"].includes(fv.lemma));
         const noms = seg.filter((x) => x.nominal && x.cas === "N" && !inPrep.has(x.n) && x.pos !== "Article");
+        // Words that stand on their own (nouns, pronouns, or anything with ὁ/ἡ/τό),
+        // not adjectives describing one of them.
+        const heads = noms.filter((x) => x.pos === "Noun" || x.pron || x.art);
         if (noms.length) {
-          if (copula) rules.push({ units: [v], ok: (P) => noms.some((x) => P[x.n] < P[v]), msg: "Who or what is the subject? Put it before the verb, like “The Word was…”." });
+          // The subject is the one with the article, or a pronoun (ὁ λόγος in
+          // “θεὸς ἦν ὁ λόγος” → “the Word was God”).
+          const marked = heads.filter((x) => x.pron || x.art), plain = heads.filter((x) => !x.pron && !x.art);
+          if (copula && marked.length === 1 && plain.length >= 1) {
+            const sub = marked[0];
+            rules.push({ units: [sub.n, v].concat(plain.map((x) => x.n)), ok: (P) => P[sub.n] < P[v] && plain.every((x) => P[x.n] > P[v]),
+              msg: `${g(sub.n)} is the subject (${sub.pron ? "a pronoun" : "it has the article"}), so it goes before ${g(v)}, and ${plain.map((x) => g(x.n)).join(", ")} comes after, like “they will be called sons” or “the Word was God”.` });
+          } else if (copula && heads.length >= 2) {
+            // Two of them: one is the subject (before the verb), the other is what
+            // the subject is or is called (after it): “they will be called sons”.
+            rules.push({ units: heads.map((x) => x.n).concat(v), ok: (P) => heads.some((x) => P[x.n] < P[v]) && heads.some((x) => P[x.n] > P[v]),
+              msg: `${g(v)} works like “is”: the subject goes before it and what it is (or is called) comes after, like “they will be called sons”.` });
+          } else if (copula && !heads.length && noms.every((x) => x.pos === "Adjective")) {
+            // “ἀγαθός ἐστιν” → “he is good”: the describing word comes after.
+            noms.forEach((x) => rules.push({ units: [x.n, v], ok: (P) => P[x.n] > P[v], msg: `${g(x.n)} describes the subject, so in English it comes after ${g(v)}, like “he is good”.` }));
+          } else if (copula) rules.push({ units: [v], ok: (P) => noms.some((x) => P[x.n] < P[v]), msg: "Who or what is the subject? Put it before the verb, like “The Word was…”." });
           else noms.forEach((x) => rules.push({ units: [x.n, v], ok: (P) => P[x.n] < P[v], msg: `${g(x.n)} is nominative, so it's the subject of ${g(v)}. In English the subject comes before the verb.` }));
         }
         if (!seg.some((x) => x.verbal)) seg.forEach((x) => {
@@ -1560,6 +1588,8 @@
     }
     return rules;
   }
+  T._order = (placed) => checkOrder(placed);   // for tests
+  T._suggest = () => suggestOrder();
   function checkOrder(placed) {
     const P = {}; placed.forEach((n, i) => { P[n] = i; });
     const bad = orderRules().filter((r) => !r.ok(P, placed));
@@ -1570,7 +1600,25 @@
   function suggestOrder() {
     const ss = T.session, N = ss.units.length;
     let best = ss.units.map((u, n) => n);
-    const score = (o) => checkOrder(o).bad.length;
+    const rules = orderRules();
+    const score = (o) => { const P = {}; o.forEach((n, i) => { P[n] = i; }); return rules.filter((r) => !r.ok(P, o)).length; };
+    // Short sentences: try every order, and keep the one that breaks the fewest
+    // rules while moving words the least from the Greek.
+    if (N <= 7 && score(best)) {
+      let bestS = Infinity, bestD = Infinity;
+      const perm = (pre, rest) => {
+        if (!rest.length) {
+          const sc = score(pre);
+          if (sc > bestS) return;
+          const d = pre.reduce((t, n, i) => t + Math.abs(n - i), 0);
+          if (sc < bestS || d < bestD) { bestS = sc; bestD = d; best = pre; }
+          return;
+        }
+        rest.forEach((x, i) => perm(pre.concat(x), rest.slice(0, i).concat(rest.slice(i + 1))));
+      };
+      perm([], best.slice());
+      return best;
+    }
     // Greedy: try moving each unit to every position while it helps.
     for (let pass = 0; pass < 6 && score(best); pass++) {
       for (let n = 0; n < N; n++) {
@@ -1581,6 +1629,19 @@
           if (sc < cs) { cur = o; cs = sc; }
         }
         best = cur;
+      }
+    }
+    // Still stuck: try moving two words at once.
+    if (score(best)) {
+      let cs = score(best);
+      for (let a2 = 0; a2 < N && cs; a2++) for (let b2 = 0; b2 < N && cs; b2++) {
+        if (a2 === b2) continue;
+        for (let ta = 0; ta < N && cs; ta++) for (let tb = 0; tb < N && cs; tb++) {
+          const o = best.filter((x) => x !== a2 && x !== b2);
+          o.splice(Math.min(ta, o.length), 0, a2); o.splice(Math.min(tb, o.length), 0, b2);
+          const sc = score(o);
+          if (sc < cs) { best = o; cs = sc; }
+        }
       }
     }
     return best;
