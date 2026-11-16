@@ -44,7 +44,8 @@
     const done = () => { build(); E.ready = true; const w = waiting; waiting = []; w.forEach((f) => f()); };
     if (window.GNT) { done(); return; }
     const s = document.createElement("script");
-    s.src = "data/gnt.js";
+    // The desktop apps may load an updated copy (see js/boot.js).
+    s.src = window.OSTRAKA_SRC ? window.OSTRAKA_SRC("data/gnt.js") : "data/gnt.js";
     s.onload = done;
     s.onerror = () => { E.loading = false; E.loadError = true; const w = waiting; waiting = []; w.forEach((f) => f()); };
     document.head.append(s);

@@ -1,0 +1,58 @@
+{
+ "name": "Ostraka Web 18",
+ "build": 1802,
+ "styles": [
+  "styles.css"
+ ],
+ "scripts": [
+  "js/paradigms.js",
+  "js/logic.js",
+  "data/practice.js",
+  "js/tengine.js",
+  "js/english.js",
+  "js/translate.js",
+  "js/app.js"
+ ],
+ "files": {
+  "index.html": {
+   "sha256": "ce8a8c7fec134413a068488fed574a515bf2d3c8c807be84a45377c5f2088fe4",
+   "size": 2576
+  },
+  "styles.css": {
+   "sha256": "cc3615e31b657e8cd510b18a2a523a825938aefe9cf9cd51c3505cd6a721d4b9",
+   "size": 49629
+  },
+  "js/paradigms.js": {
+   "sha256": "734fd550ad97d53c3aa93cea15ad71793babe4cd0d9b578cb768bb53684bfff2",
+   "size": 31947
+  },
+  "js/logic.js": {
+   "sha256": "dfa594860ceac8a9e1d27f51fdb1543fb38897f0916bb69a268f78a365d69c1b",
+   "size": 24547
+  },
+  "data/practice.js": {
+   "sha256": "fb2df194d9539e2ced8a345f0e57a0b45e515af701d134d815a0b46a8e561bbb",
+   "size": 96207
+  },
+  "js/tengine.js": {
+   "sha256": "ec9ac510ee8f811f70e4d5b2b87a1cffac5c2d0bd8f6a544b9ba0ca85af28f4a",
+   "size": 41218
+  },
+  "js/english.js": {
+   "sha256": "d2f105682d73b03fd5238a42c6ff767ea08d9f8a46b33ba7563f0854f9e71205",
+   "size": 27301
+  },
+  "js/translate.js": {
+   "sha256": "c28e4bcb341a991cd34003f1d32c5a2721dc459fe6d2e4f4f9819f0415a7033c",
+   "size": 155262
+  },
+  "js/app.js": {
+   "sha256": "9c2025b0a2c279e4c29b3b44ac3593e24620106ae0d14490a0e6ab9e96ab5855",
+   "size": 104251
+  },
+  "data/gnt.js": {
+   "sha256": "95c3a36eb3bef05c7046158bae6669e51059db3c880f41cc573e2a6d6680e598",
+   "size": 1669301
+  }
+ }
+}
