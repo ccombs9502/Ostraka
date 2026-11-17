@@ -690,3 +690,5 @@ button:focus-visible, .chip:focus-visible, .how:focus-visible, .tile:focus-visib
   .t-wrow .t-wout { grid-column: 2; grid-row: 2; min-height: 34px; font-size: 19px; }
   .t-wrow .t-wdel { grid-column: 3; grid-row: 1; }
 }
+.ws-time { float: right; font-weight: 500; color: #8a8178; font-size: 12.5px; }
+.ws-check { display: flex; align-items: center; gap: 6px; font-size: 14px; padding-bottom: 8px; cursor: pointer; white-space: nowrap; }

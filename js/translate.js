@@ -2160,11 +2160,14 @@
   }
   function workSheet(keys, title) {
     const d = O.data;
+    const showTime = !!S().tWorkTime;
     const name = S().tStudentName || "";
     const sheet = h("div", { class: "ws" },
       h("div", { class: "ws-head" },
         h("div", null, h("div", { class: "ws-title" }, title || "Translation work"),
-          h("div", { class: "ws-sub" }, new Date().toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" }))),
+          h("div", { class: "ws-sub" }, new Date().toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" }),
+            // Optional: total time spent (⚙ Show time in the Show work window).
+            showTime ? " · Time spent: " + timeText(keys.reduce((t, k) => t + secsOf(k), 0)) : "")),
         h("div", { class: "ws-name" }, name ? name : "")),
       groupSingles(keys.map((key, i) => {
         const [sid, dir] = key.split("|");
@@ -2186,7 +2189,8 @@
           r.level ? h("span", { class: "ws-elbow" }, "└") : null,
           h("span", { class: "ws-ph" }, r.units.map((n) => { const u = w.units[n]; return e2g ? (u.cue || "") + " = " + u.greek : u.greek; }).join(e2g ? " · " : " ")),
           r.role ? h("span", { class: "ws-role" }, r.role) : null))) : null;
-        const num = h("div", { class: "ws-num" }, `${sentNumber(s) || i + 1}. `, s.ref || "", s.chapter != null ? h("span", { class: "ws-ch" }, " · Chapter " + s.chapter) : null, e2g ? h("span", { class: "ws-ch" }, " · English → Greek") : null);
+        const num = h("div", { class: "ws-num" }, `${sentNumber(s) || i + 1}. `, s.ref || "", s.chapter != null ? h("span", { class: "ws-ch" }, " · Chapter " + s.chapter) : null, e2g ? h("span", { class: "ws-ch" }, " · English → Greek") : null,
+          showTime && secsOf(key) ? h("span", { class: "ws-time" }, timeText(secsOf(key))) : null);
         const final = w.text ? (e2g ? w.text : "“" + w.text.replace(/^["“”]+|["“”]+$/g, "") + "”") : "—";
         // One word (parsing practice): a small box; several sit side by side.
         if (w.units.length === 1) {
@@ -2202,6 +2206,16 @@
           h("div", { class: "ws-final" + (e2g ? " gk" : "") }, final)) };
       })));
     return sheet;
+  }
+  // Time spent on one sentence or word (its last finished try), in seconds.
+  const secsOf = (key) => (O.data.tResults[key] || {}).secs || 0;
+  // "45 sec", "4 min 5 sec", "1 hr 12 min"
+  function timeText(secs) {
+    secs = Math.round(secs);
+    if (secs < 60) return secs + " sec";
+    const m = Math.floor(secs / 60), sec = secs % 60;
+    if (m < 60) return m + " min" + (sec ? " " + sec + " sec" : "");
+    return Math.floor(m / 60) + " hr" + (m % 60 ? " " + (m % 60) + " min" : "");
   }
   // Puts single words that come one after another into a grid.
   function groupSingles(items) {
@@ -2223,7 +2237,8 @@
       h("div", { class: "body stack" },
         h("div", { class: "row wrap", style: "align-items:flex-end" }, h("div", { style: "font-size:20px;font-weight:700" }, "Your work"), h("span", { class: "spacer" }),
           field("Title", h("input", { type: "text", value: ws.title, placeholder: "Translation work", style: "width:240px", onchange: (e) => { ws.title = e.target.value.trim() || "Translation work"; render(); } })),
-          field("Name", h("input", { type: "text", placeholder: "Your name (shows on the page)", value: S().tStudentName || "", style: "width:220px", onchange: (e) => { O.set("tStudentName", e.target.value.trim()); render(); } }))),
+          field("Name", h("input", { type: "text", placeholder: "Your name (shows on the page)", value: S().tStudentName || "", style: "width:220px", onchange: (e) => { O.set("tStudentName", e.target.value.trim()); render(); } })),
+          h("label", { class: "ws-check" }, h("input", { type: "checkbox", checked: !!S().tWorkTime || null, onchange: (e) => { O.set("tWorkTime", e.target.checked); render(); } }), "Show time")),
         h("div", { class: "ws-paper" }, workSheet(keys, ws.title))),
       h("div", { class: "foot" },
         h("span", { class: "muted small", style: "margin-right:auto" }, "In the print window, choose “Save as PDF” to download it."),
