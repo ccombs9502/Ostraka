@@ -690,5 +690,7 @@ button:focus-visible, .chip:focus-visible, .how:focus-visible, .tile:focus-visib
   .t-wrow .t-wout { grid-column: 2; grid-row: 2; min-height: 34px; font-size: 19px; }
   .t-wrow .t-wdel { grid-column: 3; grid-row: 1; }
 }
-.ws-time { float: right; font-weight: 500; color: #8a8178; font-size: 12.5px; }
-.ws-check { display: flex; align-items: center; gap: 6px; font-size: 14px; padding-bottom: 8px; cursor: pointer; white-space: nowrap; }
+.ws-time { float: right; font-weight: 500; color: #a39a90; font-size: 9.5px; line-height: 1.9; letter-spacing: .01em; }
+.ws-checks { display: flex; flex-direction: column; gap: 2px; padding-bottom: 4px; }
+.ws-check { display: flex; align-items: center; gap: 6px; font-size: 14px; cursor: pointer; white-space: nowrap; }
+.ws-sub-check { font-size: 13px; padding-left: 18px; color: var(--muted); }

@@ -2161,6 +2161,7 @@
   function workSheet(keys, title) {
     const d = O.data;
     const showTime = !!S().tWorkTime;
+    const eachTime = showTime && !!S().tWorkTimeEach;   // a time in every box too (optional)
     const name = S().tStudentName || "";
     const sheet = h("div", { class: "ws" },
       h("div", { class: "ws-head" },
@@ -2190,7 +2191,7 @@
           h("span", { class: "ws-ph" }, r.units.map((n) => { const u = w.units[n]; return e2g ? (u.cue || "") + " = " + u.greek : u.greek; }).join(e2g ? " · " : " ")),
           r.role ? h("span", { class: "ws-role" }, r.role) : null))) : null;
         const num = h("div", { class: "ws-num" }, `${sentNumber(s) || i + 1}. `, s.ref || "", s.chapter != null ? h("span", { class: "ws-ch" }, " · Chapter " + s.chapter) : null, e2g ? h("span", { class: "ws-ch" }, " · English → Greek") : null,
-          showTime && secsOf(key) ? h("span", { class: "ws-time" }, timeText(secsOf(key))) : null);
+          eachTime && secsOf(key) ? h("span", { class: "ws-time" }, timeText(secsOf(key))) : null);
         const final = w.text ? (e2g ? w.text : "“" + w.text.replace(/^["“”]+|["“”]+$/g, "") + "”") : "—";
         // One word (parsing practice): a small box; several sit side by side.
         if (w.units.length === 1) {
@@ -2238,7 +2239,9 @@
         h("div", { class: "row wrap", style: "align-items:flex-end" }, h("div", { style: "font-size:20px;font-weight:700" }, "Your work"), h("span", { class: "spacer" }),
           field("Title", h("input", { type: "text", value: ws.title, placeholder: "Translation work", style: "width:240px", onchange: (e) => { ws.title = e.target.value.trim() || "Translation work"; render(); } })),
           field("Name", h("input", { type: "text", placeholder: "Your name (shows on the page)", value: S().tStudentName || "", style: "width:220px", onchange: (e) => { O.set("tStudentName", e.target.value.trim()); render(); } })),
-          h("label", { class: "ws-check" }, h("input", { type: "checkbox", checked: !!S().tWorkTime || null, onchange: (e) => { O.set("tWorkTime", e.target.checked); render(); } }), "Show time")),
+          h("div", { class: "ws-checks" },
+            h("label", { class: "ws-check" }, h("input", { type: "checkbox", checked: !!S().tWorkTime || null, onchange: (e) => { O.set("tWorkTime", e.target.checked); render(); } }), "Show time"),
+            S().tWorkTime ? h("label", { class: "ws-check ws-sub-check" }, h("input", { type: "checkbox", checked: !!S().tWorkTimeEach || null, onchange: (e) => { O.set("tWorkTimeEach", e.target.checked); render(); } }), "Each word") : null)),
         h("div", { class: "ws-paper" }, workSheet(keys, ws.title))),
       h("div", { class: "foot" },
         h("span", { class: "muted small", style: "margin-right:auto" }, "In the print window, choose “Save as PDF” to download it."),
