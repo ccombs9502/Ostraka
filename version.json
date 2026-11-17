@@ -1,6 +1,6 @@
 {
- "name": "Ostraka Web 18",
- "build": 1802,
+ "name": "Ostraka Web 19",
+ "build": 1900,
  "styles": [
   "styles.css"
  ],
@@ -47,7 +47,7 @@
    "size": 169251
   },
   "js/app.js": {
-   "sha256": "9fd47b86346432fb5d50b87f987de3f0a543e464422caa9f0764045cf2494348",
+   "sha256": "daca49877c098e1d4e70847c7816c22570c86f6f11113b4e5f6d7866770f61f4",
    "size": 104728
   },
   "data/gnt.js": {
