@@ -655,3 +655,12 @@ button:focus-visible, .chip:focus-visible, .how:focus-visible, .tile:focus-visib
 .badge { white-space: nowrap; }
 .badge.ok { background: var(--ok-soft); color: var(--ok); }
 .chip-sel { border: 1px dashed color-mix(in srgb, var(--accent) 50%, transparent); background: transparent; color: var(--accent); border-radius: 999px; padding: 6px 12px; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
+
+/* Show work: single words (parsing practice) as small boxes, side by side */
+.ws-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 14px; padding: 16px 0 18px; border-bottom: 1px solid #ddd; }
+.ws-one { border: 1px solid #ddd; border-radius: 10px; padding: 10px 12px 12px; break-inside: avoid; page-break-inside: avoid; }
+.ws-one .ws-num { margin-bottom: 4px; }
+.ws-one .ws-words { margin: 0; }
+.ws-final.ws-final-sm { font-size: 16px; margin-top: 8px; padding-top: 6px; border-top: 1px dashed #ddd; }
+.ws-final.ws-final-sm.gk { font-size: 19px; }
+@media print { .ws-grid { grid-template-columns: repeat(3, 1fr); } }

@@ -2029,7 +2029,7 @@
         h("div", null, h("div", { class: "ws-title" }, title || "Translation work"),
           h("div", { class: "ws-sub" }, new Date().toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" }))),
         h("div", { class: "ws-name" }, name ? name : "")),
-      keys.map((key, i) => {
+      groupSingles(keys.map((key, i) => {
         const [sid, dir] = key.split("|");
         const s = byId(sid), w = d.tWork[key];
         if (!s || !w) return null;
@@ -2049,15 +2049,33 @@
           r.level ? h("span", { class: "ws-elbow" }, "└") : null,
           h("span", { class: "ws-ph" }, r.units.map((n) => { const u = w.units[n]; return e2g ? (u.cue || "") + " = " + u.greek : u.greek; }).join(e2g ? " · " : " ")),
           r.role ? h("span", { class: "ws-role" }, r.role) : null))) : null;
-        return h("div", { class: "ws-sent" },
-          h("div", { class: "ws-num" }, `${sentNumber(s) || i + 1}. `, s.ref || "", s.chapter != null ? h("span", { class: "ws-ch" }, " · Chapter " + s.chapter) : null, e2g ? h("span", { class: "ws-ch" }, " · English → Greek") : null),
+        const num = h("div", { class: "ws-num" }, `${sentNumber(s) || i + 1}. `, s.ref || "", s.chapter != null ? h("span", { class: "ws-ch" }, " · Chapter " + s.chapter) : null, e2g ? h("span", { class: "ws-ch" }, " · English → Greek") : null);
+        const final = w.text ? (e2g ? w.text : "“" + w.text.replace(/^["“”]+|["“”]+$/g, "") + "”") : "—";
+        // One word (parsing practice): a small box; several sit side by side.
+        if (w.units.length === 1) {
+          const u0 = w.units[0], fold = (x) => (x || "").toLowerCase().replace(/[^a-z\u0370-\u03ff\u1f00-\u1fff]+/g, "");
+          const same = fold(w.text) === fold(e2g ? u0.greek : u0.ctx);   // already shown under the word
+          return { single: true, node: h("div", { class: "ws-one" }, num, h("div", { class: "ws-words" }, words),
+            same ? null : h("div", { class: "ws-final ws-final-sm" + (e2g ? " gk" : "") }, final)) };
+        }
+        return { single: false, node: h("div", { class: "ws-sent" }, num,
           e2g ? h("div", { class: "ws-prompt" }, w.prompt) : h("div", { class: "ws-greek" }, E.sentenceText(s, true)),
           h("div", { class: "ws-words" }, words),
           h("div", { class: "ws-label" }, e2g ? "Greek" : "Translation"),
-          h("div", { class: "ws-final" + (e2g ? " gk" : "") }, w.text ? (e2g ? w.text : "“" + w.text.replace(/^["“”]+|["“”]+$/g, "") + "”") : "—"));
-      }));
+          h("div", { class: "ws-final" + (e2g ? " gk" : "") }, final)) };
+      })));
     return sheet;
   }
+  // Puts single words that come one after another into a grid.
+  function groupSingles(items) {
+    const out = [];
+    let run = [];
+    const flush = () => { if (run.length) out.push(h("div", { class: "ws-grid" }, run)); run = []; };
+    items.forEach((it) => { if (!it) return; if (it.single) run.push(it.node); else { flush(); out.push(it.node); } });
+    flush();
+    return out;
+  }
+  T._showWork = (k, t) => showWork(k, null, t);   // for tests
   function showWork(keys, onClose, title) {
     const close = () => { closeModal(); if (onClose) onClose(); };
     openModal(() => h("div", { class: sheetClass() + " ws-modal" },
