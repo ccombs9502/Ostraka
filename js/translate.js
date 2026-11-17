@@ -11,7 +11,7 @@
   T.init = () => {
     ({ h, icon, render, openModal, closeModal, sheetClass, ap, greekInput } = window.OUI);
     const d = O.data;
-    for (const [k, v] of Object.entries({ sentences: [], sentenceGroups: [], tResults: {}, tNotes: {}, tWork: {}, sentencePresets: [], pinnedSentences: [], pinnedSentenceGroups: [], tDays: [] }))
+    for (const [k, v] of Object.entries({ sentences: [], sentenceGroups: [], wordItems: [], wordSets: [], tResults: {}, tNotes: {}, tWork: {}, sentencePresets: [], pinnedSentences: [], pinnedSentenceGroups: [], tDays: [] }))
       if (d[k] == null) d[k] = v;
     const defaults = { tLabelsFull: true, tLinkArticles: true, tNotesFull: false, tShowStructure: false, tDir: "g2e", tSkelAdvanced: false };
     for (const [k, v] of Object.entries(defaults)) if (d.settings[k] == null) d.settings[k] = v;
@@ -59,7 +59,7 @@
   const loadingNote = () => h("div", { class: "card pad muted" }, E.loadError ? "Couldn't load the Greek New Testament data (data/gnt.js)." : "Loading the Greek New Testament…");
 
   // ---------- Sentence helpers ----------
-  const byId = (id) => O.data.sentences.find((s) => s.id === id);
+  const byId = (id) => O.data.sentences.find((s) => s.id === id) || (O.data.wordItems || []).find((s) => s.id === id);
   const lastResult = (id, dir = "g2e") => O.data.tResults[id + "|" + dir] || null;
   const usedHelp = (r) => r && (r.hints > 0 || r.charts > 0 || r.structure);
   const sentenceGreek = (s) => E.sentenceText(s, false);
@@ -129,8 +129,8 @@
   // ---------- Translate page (outside a session) ----------
   T.view = () => {
     T.init();
-    const tabs = [["practice", "Practice"], ["library", "Library"], ["import", "Import"], ["type", "Type a sentence"]];
-    const body = { practice: viewPractice, library: viewLibrary, import: viewImport, type: viewType }[tr.tab]();
+    const tabs = [["practice", "Practice"], ["words", "Parsing Practice"], ["library", "Library"], ["import", "Import"], ["type", "Type a sentence"]];
+    const body = { practice: viewPractice, words: viewWords, library: viewLibrary, import: viewImport, type: viewType }[tr.tab]();
     return {
       title: "Translate",
       tools: seg(tabs, tr.tab, (v) => { tr.tab = v; render(); }),
@@ -440,8 +440,7 @@
   }
   // Pull out "(gloss)" after a word and a "(Matt 7:26)" reference at the end,
   // the same way the teacher's sentences are written for Import.
-  function typedResult() {
-    const Y = tr.type;
+  function typedResult(Y = tr.type) {
     let text = Y.text, myRef = null;
     const rm = text.match(/\(([^()]*\d+\s*:\s*\d+[^()]*)\)[\s.]*$/);
     if (rm && E.parseRef(rm[1])) { myRef = E.parseRef(rm[1]); text = text.slice(0, rm.index); }
@@ -489,7 +488,99 @@
         h("button", { class: "btn", onclick: () => { tr.type = { text: "", picks: {} }; render(); } }, "Clear"),
         h("span", { class: "spacer" }),
         h("button", { class: "btn", onclick: () => save(false) }, "Save to Library"),
+        // Several words to parse one by one, not a sentence: send them to Parsing Practice.
+        r.words.length > 1 && !r.ref ? h("button", { class: "btn", onclick: () => { tr.words = { text: Y.text, picks: {}, name: "", editing: null }; tr.tab = "words"; render(); } }, "Parsing Practice →") : null,
         h("button", { class: "btn pri", onclick: () => save(true) }, "Translate this sentence →")));
+  }
+
+  // ---------- Parsing Practice: sets of single words ----------
+  function viewWords() {
+    const d = O.data;
+    if (!E.ready && !waitGNT()) return loadingNote();
+    const W = tr.words || (tr.words = { text: "", picks: {}, name: "", editing: null });
+    const today = new Date().toLocaleDateString(undefined, { month: "short", day: "numeric" });
+    const box = h("div", { class: "t-type-out" });
+    const words = () => (W.text.trim() ? typedResult(W).words : []);
+    const paint = () => box.replaceChildren(wordsPreview());
+    const input = h("textarea", { class: "t-in gk t-type-in", rows: "1", placeholder: "Type words: epemyate egraya logous akouomen", autocomplete: "off", spellcheck: "false", autocapitalize: "off", "data-autofocus": "" });
+    input.value = W.text;
+    const grow = () => { input.style.height = "auto"; input.style.height = input.scrollHeight + 2 + "px"; };
+    input.addEventListener("input", () => {
+      const pos = input.selectionStart, before = input.value.length;
+      const g = toGreekOutsideParens(input.value);
+      if (g !== input.value) { input.value = g; const p2 = pos + (g.length - before); input.setSelectionRange(p2, p2); }
+      W.text = input.value; W.picks = {}; grow(); paint();
+    });
+    requestAnimationFrame(grow);
+    // Saves the words as a set (reusing a word you've practiced before, so its results carry over).
+    const saveSet = () => {
+      const ws = words();
+      if (!ws.length) return null;
+      const ids = ws.map((w) => {
+        const text = w.text + (w.gloss ? ` (${w.gloss})` : "");
+        const old = d.wordItems.find((x) => O.fold(sentenceGreek(x)) === O.fold(w.text));
+        if (old) return old.id;
+        const p = E.parseOne(text, null);
+        if (!p) return null;
+        const rec = { id: O.uid("w"), word: true, chapter: null, tokens: p.tokens, ref: "", refKey: null, english: "", created: Date.now() };
+        d.wordItems.push(rec);
+        return rec.id;
+      }).filter(Boolean);
+      const name = W.name.trim() || "Word practice · " + today;
+      let set = W.editing && d.wordSets.find((x) => x.id === W.editing);
+      if (set) { set.name = name; set.ids = ids; }
+      else { set = { id: O.uid("ws"), name, ids, created: Date.now() }; d.wordSets.unshift(set); }
+      O.save();
+      tr.words = { text: "", picks: {}, name: "", editing: null };
+      return set;
+    };
+    const startSet = (set) => {
+      const todo = set.ids.filter((id) => !d.tResults[id + "|g2e"]);
+      T.start(todo.length ? todo : set.ids, "g2e", set.name);
+    };
+    const wordsPreview = () => {
+      const ws = words();
+      if (!ws.length) return h("div", { class: "muted" }, "Your words will appear here with accents and breathing marks.");
+      return h("div", { class: "stack", style: "gap:8px" },
+        h("div", { class: "row wrap" }, h("b", null, ws.length + (ws.length === 1 ? " word" : " words")), h("span", { class: "spacer" }), h("span", { class: "muted small" }, h("span", { class: "t-add" }, "gold"), " = added for you")),
+        h("div", { class: "t-wordchips" }, ws.map((w, i) => h("span", {
+          class: "t-wchip" + (w.alts && w.alts.length > 1 ? " amb" : "") + (w.known ? "" : " unk"),
+          title: !w.known ? "Not found in the New Testament. Check this word yourself." : w.alts && w.alts.length > 1 ? "Tap to choose a different spelling" : null,
+          onclick: w.alts && w.alts.length > 1 ? () => { const cur = w.alts.indexOf(w.text); W.picks[i] = w.alts[(cur + 1) % w.alts.length]; paint(); } : null,
+        }, w.segs.map((sg) => (sg.add ? h("span", { class: "t-add" }, sg.t) : sg.t)), w.gloss ? h("span", { class: "t-tgloss" }, " (" + w.gloss + ")") : null))),
+        ws.some((w) => !w.known) ? h("div", { class: "note", style: "color:var(--bad)" }, "Not in the New Testament, so Ostraka can't check these: ", ws.filter((w) => !w.known).map((w) => w.typed).join(", "), ".") : null);
+    };
+    paint();
+    const sets = d.wordSets;
+    return [
+      h("div", { class: "card pad stack" },
+        h("div", { style: "font-size:21px;font-weight:700" }, W.editing ? "Edit word set" : "Parsing Practice"),
+        h("div", { class: "muted" }, "Type the words you want to parse. Each one is its own question: what it is, its lexical form, meaning, parsing and how it reads. Save them as a set to come back to later."),
+        input,
+        h("div", { class: "muted small" }, "Separate words with spaces. Leave out accents; Ostraka adds them. Put a meaning in ( ) after a word if you want it shown."),
+        box,
+        h("div", { class: "row wrap" },
+          h("input", { type: "text", placeholder: "Name this set (Word practice · " + today + ")", value: W.name, style: "flex:1;min-width:200px", oninput: (e) => { W.name = e.target.value; } }),
+          W.editing ? h("button", { class: "btn", onclick: () => { tr.words = null; render(); } }, "Cancel") : h("button", { class: "btn", onclick: () => { tr.words = null; render(); } }, "Clear"),
+          h("button", { class: "btn", onclick: () => { if (saveSet()) render(); } }, W.editing ? "Save changes" : "Save set"),
+          h("button", { class: "btn pri", onclick: () => { const set = saveSet(); if (set) startSet(set); } }, "Start parsing →"))),
+      h("div", { class: "card pad stack" },
+        h("b", { style: "font-size:17px" }, "Your word sets"),
+        sets.length ? h("div", { class: "list" }, sets.map((set) => {
+          const done = set.ids.filter((id) => d.tResults[id + "|g2e"]).length;
+          const greek = set.ids.map(byId).filter(Boolean).map(sentenceGreek);
+          const hasWork = workKeys(set.ids).length > 0;
+          return h("div", { class: "li t-wset" },
+            h("div", { style: "flex:1;min-width:0" },
+              h("div", { class: "row", style: "gap:8px" }, h("b", null, set.name), h("span", { class: "badge" + (done === set.ids.length ? " ok" : "") }, `${done} / ${set.ids.length} parsed`)),
+              h("div", { class: "greek muted", style: "white-space:nowrap;overflow:hidden;text-overflow:ellipsis" }, greek.join(" · "))),
+            h("div", { class: "row", style: "gap:6px;flex-wrap:wrap;justify-content:flex-end" },
+              hasWork ? h("button", { class: "btn link", onclick: () => showWork(workKeys(set.ids), null, set.name) }, "📄 Work") : null,
+              h("button", { class: "btn link", onclick: () => { tr.words = { text: greek.join(" "), picks: {}, name: set.name, editing: set.id }; render(); window.scrollTo(0, 0); } }, "Edit"),
+              h("button", { class: "btn link", style: "color:var(--bad)", onclick: () => { if (confirm(`Delete "${set.name}"? Your results stay saved.`)) { d.wordSets = d.wordSets.filter((x) => x.id !== set.id); O.save(); render(); } } }, "Delete"),
+              h("button", { class: "btn pri", onclick: () => startSet(set) }, done === 0 ? "Start" : done < set.ids.length ? "Continue" : "Again")));
+        })) : h("div", { class: "muted" }, "No sets yet. Type some words above and save them.")),
+    ];
   }
 
   // ---------- Sessions ----------
@@ -727,6 +818,8 @@
     if (next < 0) { next = ss.ans.findIndex((a) => !a.done); if (next >= 0) ss.ans.forEach((a) => { a.skip = false; }); }
     ss.cur = next; ss.sideTab = null;
     if (next < 0) ss.phase = "parsed";
+    // Parsing Practice: a word has no word order or English step.
+    if (next < 0 && ss.s.word) { ss.english = ss.ans.map((a) => a.f.ctx || "").join(" ").trim(); finishSentence(true); return; }
     render();
   }
 
@@ -1017,7 +1110,8 @@
     else main = finalScreen();
     const el = h("div", { class: "session" }, head,
       h("div", { class: "s-body" }, h("div", { class: "s-inner t-inner" + ap("tsent", ss.ids[ss.i] + "|" + ss.phase) },
-        h("div", { class: "t-steps" }, stepNames.map((n, i) => {
+        // Parsing Practice words have only the one step.
+        ss.s.word ? null : h("div", { class: "t-steps" }, stepNames.map((n, i) => {
           const can = i !== phaseIdx && canGo(i);
           return h(can ? "button" : "span", { class: "t-st" + (i === phaseIdx ? " on" : i < phaseIdx ? " done" : "") + (can ? " go" : ""), title: can ? "Go to this step. Your work is kept." : null, onclick: can ? () => goStep(i) : null },
             i < phaseIdx ? "✓ " + n : `${i + 1} · ${n}`);
@@ -1217,6 +1311,7 @@
   function parseScreen() {
     const ss = T.session;
     const side = ss.phase === "parsed" ? colorChart() : sidePanel();
+    if (ss.phase === "parsed" && ss.s.word) return [sentenceCard()];
     if (ss.phase === "parsed") {
       return [sentenceCard(), h("div", { class: "t-grid" },
         h("div", { class: "card pad row", style: "gap:14px" }, h("span", { class: "t-ok big" }, "✓"),
@@ -1920,7 +2015,7 @@
   }
 
   // ---------- Finishing a sentence ----------
-  function finishSentence() {
+  function finishSentence(quiet) {
     const ss = T.session, d = O.data, s = ss.s;
     const key = s.id + "|" + ss.dir;
     const prev = d.tResults[key];
@@ -1950,6 +2045,8 @@
     if (!d.tDays.includes(today)) d.tDays.push(today);
     O.save();
     ss.result = r;
+    // Parsing Practice goes straight on to the next word; the summary comes at the end.
+    if (quiet && ss.i < ss.ids.length - 1) { ss.i++; prepare(); render(); return; }
     openModal(completeSheet, false);
   }
   function streak() {
@@ -1973,29 +2070,36 @@
     const shards = Array.from({ length: 22 }, (_, i) => { const a = (i / 22) * Math.PI * 2 + (i % 3) * 0.2, rr = 100 + ((i * 37) % 70), x = 260 + Math.cos(a) * rr * 1.35, y = 60 + Math.sin(a) * rr * 0.32, sz = 6 + ((i * 7) % 9); return `<polygon class="t-shard" style="--d:${(i % 7) * 40}ms;--x:${(260 - x) * 0.6}px;--y:${(60 - y) * 0.6}px" points="0,${-sz} ${sz * 0.8},${sz * 0.4} ${-sz * 0.6},${sz * 0.7}" fill="${pal[i % 4]}" opacity="${0.55 + (i % 4) * 0.12}" transform="translate(${x} ${y}) rotate(${(i * 53) % 360})"/>`; }).join("");
     const svgShards = h("div", { class: "t-shards", html: `<svg width="520" height="210" viewBox="0 0 520 210">${shards}</svg>` });
     const last = ss.i >= ss.ids.length - 1;
-    const mm = Math.floor(r.secs / 60) + ":" + String(r.secs % 60).padStart(2, "0");
     const eng = e2g ? englishPrompt() : (ss.english || s.english);
+    // Parsing Practice: one summary for the whole set of words.
+    const set = s.word ? ss.ids.map((id) => [byId(id), O.data.tResults[id + "|" + ss.dir]]).filter(([x, rr]) => x && rr) : null;
+    const secs = set ? set.reduce((t, [, rr]) => t + (rr.secs || 0), 0) : r.secs;
+    const mm = Math.floor(secs / 60) + ":" + String(secs % 60).padStart(2, "0");
     return h("div", { class: sheetClass() + " t-done", style: "width:min(560px,100%)" },
       h("div", { class: "body center stack", style: "position:relative;overflow:hidden" },
         help ? h("div", { class: "t-redtag" }, h("span", { class: "t-dot red" }), "Translated with " + tag) : null,
         svgShards,
         h("div", { class: "t-medal" }, "✓"),
-        h("div", { style: "font-size:25px;font-weight:700;position:relative" }, "Sentence translated!"),
-        h("div", { class: "greek", style: "font-size:23px;position:relative" }, sentenceGreek(s)),
-        eng ? h("div", { style: "font-size:17px;position:relative" }, "“" + eng.trim().replace(/^["“”]+|["“”]+$/g, "") + "”") : null,
+        h("div", { style: "font-size:25px;font-weight:700;position:relative" }, set ? "Words parsed!" : "Sentence translated!"),
+        set ? h("div", { class: "muted", style: "position:relative" }, ss.title) : null,
+        h("div", { class: "greek", style: "font-size:23px;position:relative" }, set ? set.map(([x]) => sentenceGreek(x)).join(" · ") : sentenceGreek(s)),
+        eng && !set ? h("div", { style: "font-size:17px;position:relative" }, "“" + eng.trim().replace(/^["“”]+|["“”]+$/g, "") + "”") : null,
         !e2g && s.answerBy && s.english ? h("div", { class: "t-answer-k", style: "position:relative" }, h("div", { class: "label", style: "margin:6px 0 0" }, s.answerBy + "'s answer"), answerBlock(s, true)) : null,
         h("div", { class: "t-stats" },
-          [[`${r.units} / ${r.units}`, e2g ? "words built" : "words parsed"], [r.firstTry, "right first try"], [mm, "time"], ["🔥 " + streak(), "day streak"]].map(([a, b]) => h("div", null, h("b", null, a), h("span", null, b)))),
+          [set ? [`${set.length} / ${ss.ids.length}`, "words parsed"] : [`${r.units} / ${r.units}`, e2g ? "words built" : "words parsed"],
+            [set ? set.reduce((t, [, rr]) => t + (rr.firstTry || 0), 0) : r.firstTry, "right first try"], [mm, "time"], ["🔥 " + streak(), "day streak"]].map(([a, b]) => h("div", null, h("b", null, a), h("span", null, b)))),
         h("div", { class: "t-done-btns" },
-          h("button", { class: "btn big", onclick: () => { closeModal(); prepare(); render(); } }, help ? "↺ Try again without hints" : "↺ Try again"),
-          h("button", { class: "btn big", onclick: () => showWork([s.id + "|" + ss.dir], () => openModal(completeSheet, false)) }, "📄 Show work"),
-          h("button", { class: "btn pri big", "data-autofocus": "", onclick: () => { closeModal(); if (last) { T.session = null; tr.tab = "library"; window.OUI.st.section = "translate"; render(); } else { ss.i++; prepare(); render(); } } }, last ? "Finish" : "Next sentence →"))));
+          h("button", { class: "btn big", onclick: () => { closeModal(); if (set) T.start(ss.ids.slice(), ss.dir, ss.title); else { prepare(); render(); } } }, help ? "↺ Try again without hints" : "↺ Try again"),
+          h("button", { class: "btn big", onclick: () => showWork(s.word ? workKeys(ss.ids) : [s.id + "|" + ss.dir], () => openModal(completeSheet, false), s.word ? ss.title : undefined) }, "📄 Show work"),
+          h("button", { class: "btn pri big", "data-autofocus": "", onclick: () => { closeModal(); if (last) { T.session = null; tr.tab = s.word ? "words" : "library"; window.OUI.st.section = "translate"; render(); } else { ss.i++; prepare(); render(); } } }, last ? "Finish" : "Next sentence →"))));
   }
 
   // ---------- Show work (for handing in homework) ----------
   const workKeys = (ids) => {
     const d = O.data, out = [];
-    d.sentences.filter((s) => ids.includes(s.id)).forEach((s) => ["g2e", "e2g"].forEach((dir) => { if (d.tWork[s.id + "|" + dir]) out.push(s.id + "|" + dir); }));
+    // Word sets keep their own order; sentences follow the Library's.
+    const list = ids.length && ids.every((id) => (d.wordItems || []).some((w) => w.id === id)) ? ids.map(byId) : d.sentences.filter((s) => ids.includes(s.id));
+    list.forEach((s) => ["g2e", "e2g"].forEach((dir) => { if (d.tWork[s.id + "|" + dir]) out.push(s.id + "|" + dir); }));
     return out;
   };
   const WORK_COLORS = ["#1f78b4", "#2f8a43", "#c26a12", "#c2357e", "#6a4fc9", "#957800", "#d0532a", "#13857a", "#5c8a0e", "#b8336a", "#3d5fd1", "#a8630f"];

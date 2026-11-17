@@ -92,6 +92,13 @@
     const auto = app.querySelector("[data-autofocus]");
     const touchOnly = window.OT && window.OT.session && matchMedia("(hover: none)").matches;
     if (auto && !touchOnly) setTimeout(() => auto.focus({ preventScroll: !!(window.OT && window.OT.session) }), 0);
+    // Header tabs that don't fit: keep the chosen one in view and fade the edge.
+    app.querySelectorAll(".top .seg").forEach((seg) => {
+      const on = seg.querySelector(".on");
+      if (on && seg.scrollWidth > seg.clientWidth) seg.scrollLeft = Math.max(0, on.offsetLeft - seg.clientWidth / 2 + on.offsetWidth / 2);
+      const edge = () => seg.classList.toggle("more-r", seg.scrollLeft + seg.clientWidth < seg.scrollWidth - 4);
+      edge(); seg.onscroll = edge;
+    });
   }
   function openModal(fn, dismissable = true) { st.modal = fn; st.modalId = (st.modalId || 0) + 1; st.modalDismissable = dismissable; render(); }
   const sheetClass = () => "sheet" + ap("modal", st.modalId);

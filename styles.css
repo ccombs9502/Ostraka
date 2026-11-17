@@ -371,7 +371,10 @@ canvas.draw { width: 100%; aspect-ratio: 1.6; background: var(--card); border-ra
 .t-row.bad .t-k { color: var(--bad); }
 .t-row.bad input { border-color: var(--bad); }
 .t-li-main { flex: 1; min-width: 0; }
-.top .seg { flex-wrap: nowrap; overflow-x: auto; max-width: 100%; }
+.top .seg { flex-wrap: nowrap; overflow-x: auto; max-width: 100%; scrollbar-width: none; }
+.top .seg::-webkit-scrollbar { display: none; }
+/* More tabs off to the right: fade the edge so it's clear the row scrolls. */
+.top .seg.more-r { -webkit-mask-image: linear-gradient(90deg, #000 85%, transparent); mask-image: linear-gradient(90deg, #000 85%, transparent); }
 .top .seg button { white-space: nowrap; }
 @media (max-width: 760px) {
   .t-hide-sm { display: none !important; }
@@ -665,3 +668,10 @@ button:focus-visible, .chip:focus-visible, .how:focus-visible, .tile:focus-visib
 .ws-final.ws-final-sm.gk { font-size: 19px; }
 @media print { .ws-grid { grid-template-columns: repeat(3, 1fr); } }
 .ws-field { display: flex; flex-direction: column; gap: 3px; }
+
+/* Parsing Practice */
+.t-wordchips { display: flex; flex-wrap: wrap; gap: 8px; }
+.t-wchip { font-family: var(--greek); font-size: 22px; padding: 4px 12px; border-radius: 10px; background: var(--card); border: 1px solid var(--line); }
+.t-wchip.amb { border-style: dashed; cursor: pointer; }
+.t-wchip.unk { border-color: var(--bad); color: var(--bad); }
+.t-wset { align-items: center; gap: 12px; cursor: default; }
