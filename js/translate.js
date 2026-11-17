@@ -2078,15 +2078,20 @@
   T._showWork = (k, t) => showWork(k, null, t);   // for tests
   function showWork(keys, onClose, title) {
     const close = () => { closeModal(); if (onClose) onClose(); };
+    // The heading on the page: "Translation work" (or the group's name) unless
+    // you change it here. It goes back to that the next time.
+    const ws = { title: title || "Translation work" };
+    const field = (label, input) => h("label", { class: "ws-field" }, h("span", { class: "muted small" }, label), input);
     openModal(() => h("div", { class: sheetClass() + " ws-modal" },
       h("div", { class: "body stack" },
-        h("div", { class: "row wrap" }, h("div", { style: "font-size:20px;font-weight:700" }, "Your work"), h("span", { class: "spacer" }),
-          h("input", { type: "text", placeholder: "Your name (shows on the page)", value: S().tStudentName || "", style: "width:240px", onchange: (e) => { O.set("tStudentName", e.target.value.trim()); render(); } })),
-        h("div", { class: "ws-paper" }, workSheet(keys, title))),
+        h("div", { class: "row wrap", style: "align-items:flex-end" }, h("div", { style: "font-size:20px;font-weight:700" }, "Your work"), h("span", { class: "spacer" }),
+          field("Title", h("input", { type: "text", value: ws.title, placeholder: "Translation work", style: "width:240px", onchange: (e) => { ws.title = e.target.value.trim() || "Translation work"; render(); } })),
+          field("Name", h("input", { type: "text", placeholder: "Your name (shows on the page)", value: S().tStudentName || "", style: "width:220px", onchange: (e) => { O.set("tStudentName", e.target.value.trim()); render(); } }))),
+        h("div", { class: "ws-paper" }, workSheet(keys, ws.title))),
       h("div", { class: "foot" },
         h("span", { class: "muted small", style: "margin-right:auto" }, "In the print window, choose “Save as PDF” to download it."),
         h("button", { class: "btn", onclick: close }, "Close"),
-        h("button", { class: "btn pri", onclick: () => printWork(keys, title) }, "⬇ Download PDF"))), !onClose);
+        h("button", { class: "btn pri", onclick: () => printWork(keys, ws.title) }, "⬇ Download PDF"))), !onClose);
   }
   function printWork(keys, title) {
     let root = document.getElementById("t-print");

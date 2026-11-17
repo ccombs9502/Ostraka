@@ -19,8 +19,8 @@
    "size": 2576
   },
   "styles.css": {
-   "sha256": "b318f015e0305e5e8fa6e796f35c68ce58dfbc2c7b8486db58ef3930339f4113",
-   "size": 50286
+   "sha256": "7a51c0cdc056c796240edd8f94d8a84d689d329185fe2d4c03927f8800af25ed",
+   "size": 50349
   },
   "js/paradigms.js": {
    "sha256": "734fd550ad97d53c3aa93cea15ad71793babe4cd0d9b578cb768bb53684bfff2",
@@ -43,8 +43,8 @@
    "size": 27301
   },
   "js/translate.js": {
-   "sha256": "b15d0967c2595321a370cbceab0692bd5f0b0333960c0b8b684e62483e8179d6",
-   "size": 157426
+   "sha256": "103801b4be87d3fcaf288c18d71a1762c871a898fc436aa48049f5f705801e0f",
+   "size": 158014
   },
   "js/app.js": {
    "sha256": "9c2025b0a2c279e4c29b3b44ac3593e24620106ae0d14490a0e6ab9e96ab5855",
