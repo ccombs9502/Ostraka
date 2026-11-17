@@ -836,9 +836,10 @@
           const line = [`${E.FIELDS[fl].name} isn't ${val(fl, v).toLowerCase()}. `];
           if (e2g) line.push(...look());
           else if (f && f.parse && E.FIELDS[fl].i != null) {
-            const alt = f.parse.split(""); alt[E.FIELDS[fl].i] = v;
-            const altParse = alt.join(""), id = E.chartFor({ lemma: f.lemma, pos: f.pos, parse: altParse }), q = id && O.pById(id);
-            const cell = q && E.chartCell(q, altParse);
+            // The form your picks point to, only if your picks alone decide the box.
+            const mp = myParse(u, a, f, { i: E.FIELDS[fl].i, v });
+            const altParse = mp.parse, id = E.chartFor({ lemma: f.lemma, pos: f.pos, parse: altParse }), q = id && O.pById(id);
+            const cell = q && mp.decides(q) && E.chartCell(q, altParse);
             const form = cell ? O.pDisplay(q.cells[cell.r][cell.c]) : null;
             if (form) {
               const same = E.fw(q.lemma.split(",")[0]) === E.fw(f.lemma);
@@ -1229,20 +1230,41 @@
 
   // After you check a word's parsing, the side panel turns into the chart it
   // comes from, with your choice marked. Asking for it before checking counts as help.
+  // Your parsing as far as you've picked it. A chart box is only shown once
+  // you've picked everything that decides it (person + number, or case +
+  // number + gender); the key never fills in a box you left empty.
+  function myParse(u, a, f, swap) {
+    const p = f.parse.split(""), asked = {}, picked = {};
+    fieldsNow(u, a).forEach((fl) => {
+      const i = E.FIELDS[fl].i;
+      if (i == null || /2$/.test(fl)) return;
+      asked[i] = true;
+      if (a.f[fl]) { p[i] = a.f[fl]; picked[i] = true; }
+    });
+    if (swap) { p[swap.i] = swap.v; picked[swap.i] = true; }
+    const parse = p.join("");
+    // Whether a chart's box can be found from your picks alone.
+    const decides = (q) => {
+      if (!q) return false;
+      const R = q.rows.length, C = q.columns.length;
+      const need = R === 3 && C === 2 ? [0, 5] : R === 4 && C === 2 ? [4, 5] : [4, 5, 6];
+      return need.every((i) => !asked[i] || picked[i]);
+    };
+    return { parse, decides };
+  }
   function wordChart(u, a) {
     const f = unitForms(u)[0];
     if (!f || !f.parse) return null;
-    let parse = f.parse, mine = false;
+    let parse = f.parse, mine = false, decides = () => true;
     if (!a.ok.parse && a.chartOn) {
-      // Your choice: the key's parsing with your picks swapped in.
-      const p = parse.split("");
-      fieldsNow(u, a).forEach((fl) => { const def = E.FIELDS[fl]; if (def.i != null && !/2$/.test(fl) && a.f[fl]) p[def.i] = a.f[fl]; });
-      parse = p.join(""); mine = true;
+      // Your choice: your picks, with nothing filled in from the answer.
+      ({ parse, decides } = myParse(u, a, f));
+      mine = true;
     }
     const id = E.chartFor({ lemma: f.lemma, pos: f.pos, parse });
     const q = id && O.pById(id);
     if (!q) return null;
-    return { q, cell: a.chartOn ? E.chartCell(q, parse) : null, mine };
+    return { q, cell: a.chartOn && decides(q) ? E.chartCell(q, parse) : null, mine };
   }
   function sidePanel() {
     const ss = T.session, n = ss.cur, u = ss.units[n], a = n >= 0 ? ss.ans[n] : null;
@@ -1265,7 +1287,7 @@
           q.cells[i].map((c, j) => h("td", { class: cell && cell.r === i && cell.c === j ? (mine ? "t-you" : "t-hit") : "" }, O.pDisplay(c))))))),
       cell ? h("div", { class: "small", style: "margin-top:8px" }, mine ? h("span", null, h("b", { class: "t-youk" }, "Your choice"), " is marked. Does its ending match ", h("span", { class: "greek" }, word), "?")
         : h("span", null, h("b", { class: "t-hitk" }, "✓ "), h("span", { class: "greek" }, word), " goes in the marked box.")) :
-        h("div", { class: "muted small", style: "margin-top:8px" }, a.chartOn ? "This word's form isn't one box of this chart." : "Check your parsing to see where this word goes."));
+        h("div", { class: "muted small", style: "margin-top:8px" }, !a.chartOn ? "Check your parsing to see where this word goes." : mine ? "Pick every part (like person and number) to see which box your choice points to." : "This word's form isn't one box of this chart."));
   }
   function colorChart(extra) {
     const ss = T.session, e2g = ss.dir === "e2g";
