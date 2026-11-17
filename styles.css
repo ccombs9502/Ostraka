@@ -675,3 +675,18 @@ button:focus-visible, .chip:focus-visible, .how:focus-visible, .tile:focus-visib
 .t-wchip.amb { border-style: dashed; cursor: pointer; }
 .t-wchip.unk { border-color: var(--bad); color: var(--bad); }
 .t-wset { align-items: center; gap: 12px; cursor: default; }
+.t-wlist { display: flex; flex-direction: column; gap: 8px; }
+.t-wrow { display: grid; grid-template-columns: 28px minmax(0, 1fr) minmax(0, 1fr) 34px; gap: 10px; align-items: center; }
+.t-wnum { color: var(--muted); font-weight: 600; text-align: right; font-variant-numeric: tabular-nums; }
+.t-wrow input.t-in { font-size: 20px; padding: 8px 12px; min-width: 0; }
+.t-wout { font-size: 22px; min-height: 40px; display: flex; align-items: center; gap: 8px; padding: 0 10px; border-radius: 10px; background: var(--accent-soft); overflow: hidden; white-space: nowrap; }
+.t-wout.amb { outline: 1px dashed var(--accent); cursor: pointer; }
+.t-wout.unk .greek { color: var(--bad); }
+.t-wwarn { font-size: 12px; color: var(--bad); font-weight: 600; }
+.t-wdel { opacity: .55; }
+.t-wdel:hover, .t-wdel:focus-visible { opacity: 1; color: var(--bad); }
+@media (max-width: 560px) {
+  .t-wrow { grid-template-columns: 22px minmax(0, 1fr) 30px; }
+  .t-wrow .t-wout { grid-column: 2; grid-row: 2; min-height: 34px; font-size: 19px; }
+  .t-wrow .t-wdel { grid-column: 3; grid-row: 1; }
+}

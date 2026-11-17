@@ -489,7 +489,7 @@
         h("span", { class: "spacer" }),
         h("button", { class: "btn", onclick: () => save(false) }, "Save to Library"),
         // Several words to parse one by one, not a sentence: send them to Parsing Practice.
-        r.words.length > 1 && !r.ref ? h("button", { class: "btn", onclick: () => { tr.words = { text: Y.text, picks: {}, name: "", editing: null }; tr.tab = "words"; render(); } }, "Parsing Practice →") : null,
+        r.words.length > 1 && !r.ref ? h("button", { class: "btn", onclick: () => { tr.words = { rows: Y.text.trim().split(/\s+/).map((t) => ({ text: t, pick: null })).concat({ text: "", pick: null }), name: "", editing: null }; tr.tab = "words"; render(); } }, "Parsing Practice →") : null,
         h("button", { class: "btn pri", onclick: () => save(true) }, "Translate this sentence →")));
   }
 
@@ -497,25 +497,70 @@
   function viewWords() {
     const d = O.data;
     if (!E.ready && !waitGNT()) return loadingNote();
-    const W = tr.words || (tr.words = { text: "", picks: {}, name: "", editing: null });
+    // One row per word: what you type, and beside it the word with accents.
+    if (!tr.words || !tr.words.rows) tr.words = { rows: [{ text: "", pick: null }], name: "", editing: null, ...(tr.words && tr.words.text ? { rows: tr.words.text.trim().split(/\s+/).map((t) => ({ text: t, pick: null })) } : {}) };
+    const W = tr.words;
     const today = new Date().toLocaleDateString(undefined, { month: "short", day: "numeric" });
-    const box = h("div", { class: "t-type-out" });
-    const words = () => (W.text.trim() ? typedResult(W).words : []);
-    const paint = () => box.replaceChildren(wordsPreview());
-    const input = h("textarea", { class: "t-in gk t-type-in", rows: "1", placeholder: "Type words: epemyate egraya logous akouomen", autocomplete: "off", spellcheck: "false", autocapitalize: "off", "data-autofocus": "" });
-    input.value = W.text;
-    const grow = () => { input.style.height = "auto"; input.style.height = input.scrollHeight + 2 + "px"; };
-    input.addEventListener("input", () => {
-      const pos = input.selectionStart, before = input.value.length;
-      const g = toGreekOutsideParens(input.value);
-      if (g !== input.value) { input.value = g; const p2 = pos + (g.length - before); input.setSelectionRange(p2, p2); }
-      W.text = input.value; W.picks = {}; grow(); paint();
-    });
-    requestAnimationFrame(grow);
+    // Reads one row: "epemyate" or "epemyate (you sent)".
+    const readRow = (row) => {
+      if (!row.text.trim()) return null;
+      const w = typedResult({ text: row.text, picks: row.pick ? { 0: row.pick } : {} }).words[0];
+      return w || null;
+    };
+    const filled = () => W.rows.map(readRow).filter(Boolean);
+    const list = h("div", { class: "t-wlist" });
+    const count = h("b");
+    // Right away (so the next letter you type lands in the new row), and again after the redraw settles.
+    const focusRow = (i, atEnd) => {
+      const go = () => { const el = document.querySelectorAll(".t-wlist .t-wrow input")[i]; if (el && document.activeElement !== el) { el.focus(); if (atEnd) el.setSelectionRange(el.value.length, el.value.length); } };
+      go(); requestAnimationFrame(go);
+    };
+    const paintCount = () => { const n = filled().length; count.textContent = n + (n === 1 ? " word" : " words"); };
+    const rowEl = (row, i) => {
+      const out = h("div", { class: "t-wout" });
+      const paintOut = () => {
+        const w = readRow(row);
+        out.className = "t-wout" + (w && !w.known ? " unk" : "") + (w && w.alts && w.alts.length > 1 ? " amb" : "");
+        out.title = w && !w.known ? "Not found in the New Testament. Ostraka can't check this word." : w && w.alts && w.alts.length > 1 ? "Tap to choose a different spelling" : "";
+        out.onclick = w && w.alts && w.alts.length > 1 ? () => { const cur = w.alts.indexOf(w.text); row.pick = w.alts[(cur + 1) % w.alts.length]; paintOut(); } : null;
+        out.replaceChildren(...(w ? [h("span", { class: "greek" }, w.segs.map((sg) => (sg.add ? h("span", { class: "t-add" }, sg.t) : sg.t))), w.gloss ? h("span", { class: "t-tgloss" }, " (" + w.gloss + ")") : null, !w.known ? h("span", { class: "t-wwarn" }, "not in the NT") : null].filter(Boolean) : [h("span", { class: "muted small" }, "")]));
+      };
+      const input = h("input", { type: "text", class: "t-in gk", value: row.text, placeholder: i === 0 ? "e.g. egraya" : "", autocomplete: "off", spellcheck: "false", autocapitalize: "off", "aria-label": "Word " + (i + 1) });
+      input.addEventListener("input", () => {
+        const v = input.value;
+        // A pasted list: one row per word.
+        if (/\s/.test(v.trim()) && !/\(/.test(v)) {
+          const parts = toGreekOutsideParens(v).trim().split(/[\s,;]+/).filter(Boolean);
+          W.rows.splice(i, 1, ...parts.map((t) => ({ text: t, pick: null })));
+          render(); focusRow(i + parts.length - 1, true); return;
+        }
+        const pos = input.selectionStart, before = v.length, g = toGreekOutsideParens(v);
+        if (g !== v) { input.value = g; const p2 = pos + (g.length - before); input.setSelectionRange(p2, p2); }
+        row.text = input.value; row.pick = null; paintOut(); paintCount();
+      });
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          if (!row.text.trim()) return;
+          if (i === W.rows.length - 1) W.rows.push({ text: "", pick: null }); else if (W.rows[i + 1].text.trim()) W.rows.splice(i + 1, 0, { text: "", pick: null });
+          render(); focusRow(i + 1);
+        } else if (e.key === "Backspace" && !input.value && W.rows.length > 1) {
+          e.preventDefault(); W.rows.splice(i, 1); render(); focusRow(Math.max(0, i - 1), true);
+        } else if (e.key === "ArrowDown") { e.preventDefault(); focusRow(i + 1, true); }
+        else if (e.key === "ArrowUp") { e.preventDefault(); focusRow(i - 1, true); }
+      });
+      paintOut();
+      return h("div", { class: "t-wrow" },
+        h("span", { class: "t-wnum" }, i + 1 + "."),
+        input, out,
+        h("button", { class: "icon-btn t-wdel", title: "Remove this word", "aria-label": "Remove word " + (i + 1), onclick: () => { W.rows.splice(i, 1); if (!W.rows.length) W.rows.push({ text: "", pick: null }); render(); } }, "✕"));
+    };
+    list.replaceChildren(...W.rows.map(rowEl));
+    paintCount();
     // Saves the words as a set (reusing a word you've practiced before, so its results carry over).
     const saveSet = () => {
-      const ws = words();
-      if (!ws.length) return null;
+      const ws = filled();
+      if (!ws.length) { alert("Type at least one word."); return null; }
       const ids = ws.map((w) => {
         const text = w.text + (w.gloss ? ` (${w.gloss})` : "");
         const old = d.wordItems.find((x) => O.fold(sentenceGreek(x)) === O.fold(w.text));
@@ -531,41 +576,29 @@
       if (set) { set.name = name; set.ids = ids; }
       else { set = { id: O.uid("ws"), name, ids, created: Date.now() }; d.wordSets.unshift(set); }
       O.save();
-      tr.words = { text: "", picks: {}, name: "", editing: null };
+      tr.words = null;
       return set;
     };
     const startSet = (set) => {
       const todo = set.ids.filter((id) => !d.tResults[id + "|g2e"]);
       T.start(todo.length ? todo : set.ids, "g2e", set.name);
     };
-    const wordsPreview = () => {
-      const ws = words();
-      if (!ws.length) return h("div", { class: "muted" }, "Your words will appear here with accents and breathing marks.");
-      return h("div", { class: "stack", style: "gap:8px" },
-        h("div", { class: "row wrap" }, h("b", null, ws.length + (ws.length === 1 ? " word" : " words")), h("span", { class: "spacer" }), h("span", { class: "muted small" }, h("span", { class: "t-add" }, "gold"), " = added for you")),
-        h("div", { class: "t-wordchips" }, ws.map((w, i) => h("span", {
-          class: "t-wchip" + (w.alts && w.alts.length > 1 ? " amb" : "") + (w.known ? "" : " unk"),
-          title: !w.known ? "Not found in the New Testament. Check this word yourself." : w.alts && w.alts.length > 1 ? "Tap to choose a different spelling" : null,
-          onclick: w.alts && w.alts.length > 1 ? () => { const cur = w.alts.indexOf(w.text); W.picks[i] = w.alts[(cur + 1) % w.alts.length]; paint(); } : null,
-        }, w.segs.map((sg) => (sg.add ? h("span", { class: "t-add" }, sg.t) : sg.t)), w.gloss ? h("span", { class: "t-tgloss" }, " (" + w.gloss + ")") : null))),
-        ws.some((w) => !w.known) ? h("div", { class: "note", style: "color:var(--bad)" }, "Not in the New Testament, so Ostraka can't check these: ", ws.filter((w) => !w.known).map((w) => w.typed).join(", "), ".") : null);
-    };
-    paint();
+    const editSet = (set) => { tr.words = { rows: set.ids.map(byId).filter(Boolean).map((x) => ({ text: x.tokens.map((t) => t.w + (t.given ? ` (${t.given})` : "")).join(" "), pick: null })).concat({ text: "", pick: null }), name: set.name, editing: set.id }; render(); window.scrollTo(0, 0); };
     const sets = d.wordSets;
     return [
       h("div", { class: "card pad stack" },
         h("div", { style: "font-size:21px;font-weight:700" }, W.editing ? "Edit word set" : "Parsing Practice"),
-        h("div", { class: "muted" }, "Type the words you want to parse. Each one is its own question: what it is, its lexical form, meaning, parsing and how it reads. Save them as a set to come back to later."),
-        input,
-        h("div", { class: "muted small" }, "Separate words with spaces. Leave out accents; Ostraka adds them. Put a meaning in ( ) after a word if you want it shown."),
-        box,
+        h("div", { class: "muted" }, "List the words you want to parse, one per line. Each one gets its own questions: what it is, its lexical form, meaning, parsing and how it reads. Save the list as a set to come back to later."),
+        h("div", { class: "row wrap t-wlist-head" }, count, h("span", { class: "spacer" }), h("span", { class: "muted small" }, "Type without accents · Enter for the next word · ", h("span", { class: "t-add" }, "gold"), " = added for you")),
+        list,
+        h("button", { class: "btn link", style: "align-self:flex-start", onclick: () => { W.rows.push({ text: "", pick: null }); render(); focusRow(W.rows.length - 1); } }, "+ Add a word"),
         h("div", { class: "row wrap" },
-          h("input", { type: "text", placeholder: "Name this set (Word practice · " + today + ")", value: W.name, style: "flex:1;min-width:200px", oninput: (e) => { W.name = e.target.value; } }),
-          W.editing ? h("button", { class: "btn", onclick: () => { tr.words = null; render(); } }, "Cancel") : h("button", { class: "btn", onclick: () => { tr.words = null; render(); } }, "Clear"),
-          h("button", { class: "btn", onclick: () => { if (saveSet()) render(); } }, W.editing ? "Save changes" : "Save set"),
+          h("input", { type: "text", placeholder: "Name this list (Word practice · " + today + ")", value: W.name, style: "flex:1;min-width:200px", oninput: (e) => { W.name = e.target.value; } }),
+          h("button", { class: "btn", onclick: () => { tr.words = null; render(); } }, W.editing ? "Cancel" : "Clear"),
+          h("button", { class: "btn", onclick: () => { if (saveSet()) render(); } }, W.editing ? "Save changes" : "Save list"),
           h("button", { class: "btn pri", onclick: () => { const set = saveSet(); if (set) startSet(set); } }, "Start parsing →"))),
       h("div", { class: "card pad stack" },
-        h("b", { style: "font-size:17px" }, "Your word sets"),
+        h("b", { style: "font-size:17px" }, "Your saved lists"),
         sets.length ? h("div", { class: "list" }, sets.map((set) => {
           const done = set.ids.filter((id) => d.tResults[id + "|g2e"]).length;
           const greek = set.ids.map(byId).filter(Boolean).map(sentenceGreek);
@@ -576,10 +609,10 @@
               h("div", { class: "greek muted", style: "white-space:nowrap;overflow:hidden;text-overflow:ellipsis" }, greek.join(" · "))),
             h("div", { class: "row", style: "gap:6px;flex-wrap:wrap;justify-content:flex-end" },
               hasWork ? h("button", { class: "btn link", onclick: () => showWork(workKeys(set.ids), null, set.name) }, "📄 Work") : null,
-              h("button", { class: "btn link", onclick: () => { tr.words = { text: greek.join(" "), picks: {}, name: set.name, editing: set.id }; render(); window.scrollTo(0, 0); } }, "Edit"),
+              h("button", { class: "btn link", onclick: () => editSet(set) }, "Edit"),
               h("button", { class: "btn link", style: "color:var(--bad)", onclick: () => { if (confirm(`Delete "${set.name}"? Your results stay saved.`)) { d.wordSets = d.wordSets.filter((x) => x.id !== set.id); O.save(); render(); } } }, "Delete"),
               h("button", { class: "btn pri", onclick: () => startSet(set) }, done === 0 ? "Start" : done < set.ids.length ? "Continue" : "Again")));
-        })) : h("div", { class: "muted" }, "No sets yet. Type some words above and save them.")),
+        })) : h("div", { class: "muted" }, "No lists yet. Type some words above and save them.")),
     ];
   }
 
