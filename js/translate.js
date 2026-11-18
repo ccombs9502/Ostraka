@@ -36,7 +36,7 @@
 
   const PAL_DARK = ["#8fe08a", "#7cc8f0", "#f0b46a", "#ef8fd6", "#b9a4ff", "#f4e06d", "#ff9e7a", "#6fe0d0", "#c9e86f", "#f59ac0", "#9fb8ff", "#ffc773"];
   const PAL_LIGHT = ["#2f8a43", "#1f78b4", "#c26a12", "#c2357e", "#6a4fc9", "#957800", "#d0532a", "#13857a", "#5c8a0e", "#b8336a", "#3d5fd1", "#a8630f"];
-  const palette = () => (matchMedia("(prefers-color-scheme: dark)").matches ? PAL_DARK : PAL_LIGHT);
+  const palette = () => ((O.isDark ? O.isDark() : matchMedia("(prefers-color-scheme: dark)").matches) ? PAL_DARK : PAL_LIGHT);
   const shuffle = (a) => O.shuffle(a.slice());
   const greekIn = (props) => {
     const el = greekInput("t-in gk", props.placeholder || "");

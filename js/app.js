@@ -9,6 +9,19 @@
     window.print = () => O.post({ type: "print", title: document.title });
   }
   const S = O.data.settings;
+  // Appearance: follow the system, or always light / always dark.
+  const applyTheme = () => {
+    const t = S.theme, root = document.documentElement;
+    if (t === "light" || t === "dark") root.dataset.theme = t; else delete root.dataset.theme;
+    document.querySelectorAll('meta[name="theme-color"]').forEach((m) => {
+      if (!m.dataset.media) m.dataset.media = m.getAttribute("media") || "";
+      const isDarkTag = m.dataset.media.includes("dark");
+      if (t === "light" || t === "dark") { m.removeAttribute("media"); m.content = t === "dark" ? "#141311" : "#f3f1ee"; }
+      else { m.setAttribute("media", m.dataset.media); m.content = isDarkTag ? "#141311" : "#f3f1ee"; }
+    });
+  };
+  applyTheme();
+  O.isDark = () => { const t = document.documentElement.dataset.theme; return t ? t === "dark" : matchMedia("(prefers-color-scheme: dark)").matches; };
 
   // ---------- Tiny DOM helper ----------
   function h(tag, props, ...kids) {
@@ -48,9 +61,25 @@
     pin: '<path d="M9 3h6l-1 6 4 4H6l4-4z"/><path d="M12 13v8"/>',
     x: '<path d="M6 6l12 12M18 6 6 18"/>',
     lambda: '<path fill="currentColor" stroke="none" d="M4.6 3.3C4.6 2.4 5.3 1.9 6.4 1.9C8.6 1.9 9.9 3.2 11 5.6L17.2 18.6C17.6 19.5 18.1 19.8 18.8 19.8C19.3 19.8 19.6 19.6 19.9 19.4L20.3 20.6C19.6 21.3 18.7 21.7 17.6 21.7C16.2 21.7 15.3 21 14.6 19.6L8.6 6.9C8 5.6 7.4 4.9 6.6 4.7C6 4.6 5.6 4.7 5.3 4.9C4.9 4.6 4.6 4 4.6 3.3ZM10.4 10.4L12.1 13.9L7.7 21.3C7.5 21.6 7.2 21.7 6.8 21.7L4.9 21.7C4.4 21.7 4.2 21.3 4.4 20.9Z"/>',
+    homeO: '<path d="M3.5 10.5 12 3.5l8.5 7"/><path d="M5.5 9v11.5h13V9"/><path d="M10 20.5v-6h4v6"/>',
+    bookOpen: '<path d="M12 6.5C10 5 7 4.5 3 5v14c4-.5 7 0 9 1.5 2-1.5 5-2 9-1.5V5c-4-.5-7 0-9 1.5z"/><path d="M12 6.5v14"/>',
+    layers: '<path d="M12 3 2.5 8 12 13l9.5-5z"/><path d="m2.5 12 9.5 5 9.5-5"/><path d="m2.5 16 9.5 5 9.5-5"/>',
+    bars: '<path d="M3.5 20.5h17"/><rect x="5" y="12" width="3" height="6.5" rx=".8"/><rect x="10.5" y="5" width="3" height="13.5" rx=".8"/><rect x="16" y="9" width="3" height="9.5" rx=".8"/>',
+    bookmark: '<path d="M6.5 3.5h11v17L12 16l-5.5 4.5z"/>',
+    cog: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
+    search: '<circle cx="11" cy="11" r="7"/><path d="m20.5 20.5-4.5-4.5"/>',
+    bell: '<path d="M18 8.5a6 6 0 0 0-12 0c0 7-3 8.5-3 8.5h18s-3-1.5-3-8.5"/><path d="M13.7 20.5a2 2 0 0 1-3.4 0"/>',
     lang: '<path d="M3 5h9M7.5 3v2M5 5c.9 3.2 3.2 5.8 6.5 7M10 5c-.9 3.2-3.2 5.8-6.5 7"/><path d="m12.5 21 4.5-10 4.5 10M14 17.5h6"/>',
   };
   const icon = (n) => svg(ICON[n]);
+  // The Ostraka mark: a crescent ring with the acute accent from the app icon.
+  const logoMark = () => {
+    const el = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    el.setAttribute("viewBox", "14 21 236 215"); el.setAttribute("aria-hidden", "true");
+    el.innerHTML = '<path fill="currentColor" fill-rule="evenodd" d="M20,130a100,100 0 1,0 200,0a100,100 0 1,0 -200,0ZM25,130a89,89 0 1,0 178,0a89,89 0 1,0 -178,0Z"/>' +
+      '<path fill="currentColor" d="M205,27L245,27L205,67Z"/>';
+    return el;
+  };
   const pinIcon = (on) => { const s = icon("pin"); if (on) s.setAttribute("fill", "currentColor"); return s; };
 
   // ---------- App state ----------
@@ -92,6 +121,17 @@
     const auto = app.querySelector("[data-autofocus]");
     const touchOnly = window.OT && window.OT.session && matchMedia("(hover: none)").matches;
     if (auto && !touchOnly) setTimeout(() => auto.focus({ preventScroll: !!(window.OT && window.OT.session) }), 0);
+    // Sidebar: the highlight glides from the last page to the new one.
+    const ind = app.querySelector(".side-ind"), onNav = app.querySelector(".side .nav.on");
+    if (ind && onNav && getComputedStyle(ind).display !== "none") {
+      const to = onNav.offsetTop, from = render.indTop;
+      ind.style.height = onNav.offsetHeight + "px";
+      if (from != null && from !== to && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
+        ind.style.transition = "none"; ind.style.transform = `translateY(${from}px)`; ind.offsetHeight;
+        ind.style.transition = ""; ind.style.transform = `translateY(${to}px)`;
+      } else ind.style.transform = `translateY(${to}px)`;
+      ind.classList.add("show"); render.indTop = to;
+    }
     // Header tabs that don't fit: keep the chosen one in view and fade the edge.
     app.querySelectorAll(".top .seg").forEach((seg) => {
       const on = seg.querySelector(".on");
@@ -111,77 +151,177 @@
   });
 
   // ---------- Shell ----------
-  const SECTIONS = [["home", "Home", "home"], ["vocab", "Vocabulary", "book"], ["translate", "Translate", "lambda"], ["paradigms", "Paradigms", "grid"], ["settings", "Settings", "gear"]];
-  function go(section, practice = false) { st.section = section; st.paradigmPractice = practice; st.pstack = []; if (section === "paradigms") st.pBrowse = false; render(); }
+  const SECTIONS = [["home", "Home", "homeO"], ["vocab", "Vocabulary", "bookOpen"], ["translate", "Translate", "lambda"], ["paradigms", "Paradigms", "layers"], ["progress", "Progress", "bars"], ["chapters", "Chapters", "bookmark"], ["settings", "Settings", "cog"]];
+  const TABS = ["home", "vocab", "translate", "paradigms", "settings"];
+  function go(section, practice = false) { if (section === "home" && st.section !== "home") pickVerse(); st.section = section; st.paradigmPractice = practice; st.pstack = []; if (section === "paradigms") st.pBrowse = false; render(); }
 
   function renderShell() {
     const navBtn = ([id, title, ic]) =>
-      h("button", { class: "nav" + (st.section === id || (id === "vocab" && st.section === "add") || (id === "home" && st.section === "chapters") ? " on" : ""), "aria-current": st.section === id ? "page" : null, onclick: () => go(id) }, icon(ic), title);
-    const views = { home: viewHome, chapters: viewChapters, vocab: viewVocab, translate: () => window.OT.view(), paradigms: viewParadigms, add: viewAdd, settings: viewSettings };
+      h("button", { class: "nav" + (st.section === id || (id === "vocab" && st.section === "add") || (id === "home" && st.section === "chapters" && matchMedia("(max-width: 760px)").matches) ? " on" : ""), "aria-current": st.section === id ? "page" : null, onclick: () => go(id) }, icon(ic), title);
+    const views = { home: viewHome, chapters: viewChapters, progress: viewProgress, vocab: viewVocab, translate: () => window.OT.view(), paradigms: viewParadigms, add: viewAdd, settings: viewSettings };
     const page = views[st.section]();
     if (!O.data.settings.hasSeenWelcome && !st.modal) setTimeout(() => openModal(welcomeSheet, false), 0);
     // People who already use Ostraka get asked their name once, too.
     else if (!O.embedded && !S.userName && !S.askedName && !st.modal && !st.askedThisVisit) { st.askedThisVisit = true; setTimeout(() => openModal(() => nameSheet(true), false), 0); }
     return h("div", { class: "shell" },
-      h("nav", { class: "side" }, h("h6", null, "Ostraka"), SECTIONS.map(navBtn)),
+      h("nav", { class: "side" },
+        h("div", { class: "side-ind", "aria-hidden": "true" }),
+        h("button", { class: "side-logo", onclick: () => go("home"), "aria-label": "Ostraka home" }, logoMark(), h("span", null, "OSTRAKA")),
+        SECTIONS.filter(([id]) => id !== "settings").map(navBtn), h("div", { class: "side-rule" }), SECTIONS.filter(([id]) => id === "settings").map(navBtn)),
       h("main", { class: "main" },
-        h("div", { class: "top" }, page.title, h("span", { class: "spacer" }), page.tools || null),
-        h("div", { class: "content" }, h("div", { class: "page" + ap("page", st.section + "|" + JSON.stringify(st.pstack[st.pstack.length - 1] || "")) }, page.body))),
-      h("nav", { class: "tabs" }, SECTIONS.map(navBtn)));
+        h("div", { class: "top" + (page.topClass ? " " + page.topClass : "") }, page.title, h("span", { class: "spacer" }), page.tools || null),
+        h("div", { class: "content" }, h("div", { class: "page" + (st.section === "home" || st.section === "progress" ? " wide" : "") + ap("page", st.section + "|" + JSON.stringify(st.pstack[st.pstack.length - 1] || "")) }, page.body))),
+      h("nav", { class: "tabs" }, SECTIONS.filter(([id]) => TABS.includes(id)).map(navBtn)));
   }
 
   // ---------- Home ----------
+  // The Greek line under the greeting: a new one each time you come to Home.
+  // {N} is the student's name in Greek letters. Lowercase unless it's a name.
+  const VERSES = [
+    ["χαῖρε, {N}.", "Greetings, {n}.", "Koine greeting (Luke 1:28)"],
+    ["εἰρήνη σοι, {N}.", "Peace to you, {n}.", "3 John 15"],
+    ["χάρις σοι καὶ εἰρήνη.", "Grace to you and peace.", "Romans 1:7 (singular σοι)"],
+    ["ὁ κύριος μετὰ σοῦ.", "The Lord is with you.", "Luke 1:28"],
+    ["μὴ φοβοῦ, {N}.", "Do not be afraid, {n}.", "Luke 1:30"],
+    ["χαῖρε, {N}· μάθωμεν.", "Greetings, {n}; let us learn.", "μάθωμεν: hortatory subjunctive"],
+    ["ἐν ἀρχῇ ἦν ὁ λόγος.", "In the beginning was the Word.", "John 1:1"],
+    ["ὁ λόγος σὰρξ ἐγένετο.", "The Word became flesh.", "John 1:14"],
+    ["ὁ θεὸς ἀγάπη ἐστίν.", "God is love.", "1 John 4:8"],
+    ["ἐγώ εἰμι τὸ φῶς τοῦ κόσμου.", "I am the light of the world.", "John 8:12"],
+    ["ἐγώ εἰμι ὁ ποιμὴν ὁ καλός.", "I am the good shepherd.", "John 10:11"],
+    ["ἐγώ εἰμι ἡ ὁδὸς καὶ ἡ ἀλήθεια καὶ ἡ ζωή.", "I am the way, the truth, and the life.", "John 14:6"],
+    ["ἡ ἀλήθεια ἐλευθερώσει ὑμᾶς.", "The truth will set you free.", "John 8:32"],
+    ["ὁ λόγος ὁ σὸς ἀλήθειά ἐστιν.", "Your word is truth.", "John 17:17"],
+    ["ἡ ἀγάπη οὐδέποτε πίπτει.", "Love never fails.", "1 Corinthians 13:8"],
+    ["μακάριοι οἱ καθαροὶ τῇ καρδίᾳ.", "Blessed are the pure in heart.", "Matthew 5:8"],
+    ["ἀγαπήσεις τὸν πλησίον σου ὡς σεαυτόν.", "You shall love your neighbor as yourself.", "Matthew 22:39"],
+    ["πάντα ἰσχύω ἐν τῷ ἐνδυναμοῦντί με.", "I can do all things through him who strengthens me.", "Philippians 4:13"],
+    ["πάντοτε χαίρετε.", "Rejoice always.", "1 Thessalonians 5:16"],
+    ["ἀδιαλείπτως προσεύχεσθε.", "Pray without ceasing.", "1 Thessalonians 5:17"],
+    ["χαίρετε ἐν κυρίῳ πάντοτε.", "Rejoice in the Lord always.", "Philippians 4:4"],
+  ];
+  // English name → Greek letters (Charlie → Χάρλι). Settings lets you fix the spelling.
+  function greekName(name) {
+    let w = String(name || "").trim().split(/\s+/)[0].toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z]/g, "");
+    if (!w) return "";
+    w = w.replace(/ce$/, "s").replace(/ie$|y$|ee$|ey$/, "I").replace(/([^aeiou])e$/, "$1");
+    const pairs = [["ch", "χ"], ["th", "θ"], ["ph", "φ"], ["ps", "ψ"], ["sh", "σ"], ["ck", "κ"], ["qu", "κου"], ["ou", "ου"], ["oo", "ου"], ["ew", "ου"], ["ee", "ι"], ["ea", "ι"], ["ai", "αι"], ["ay", "αι"], ["ll", "λ"], ["ss", "σ"], ["tt", "τ"], ["nn", "ν"], ["mm", "μ"], ["rr", "ρ"]];
+    const one = { a: "α", b: "β", c: "κ", d: "δ", e: "ε", f: "φ", g: "γ", h: "", i: "ι", j: "τζ", k: "κ", l: "λ", m: "μ", n: "ν", o: "ο", p: "π", q: "κ", r: "ρ", s: "σ", t: "τ", u: "ου", v: "β", w: "ου", x: "ξ", y: "ι", z: "ζ", I: "ι" };
+    let out = "";
+    for (let i = 0; i < w.length;) {
+      const p = pairs.find(([a]) => w.startsWith(a, i));
+      if (p) { out += p[1]; i += p[0].length; continue; }
+      const c = w[i];
+      out += c === "c" && /[eiy]/.test(w[i + 1] || "") ? "σ" : one[c] ?? "";
+      i++;
+    }
+    out = out.replace(/σ$/, "ς");
+    // Accent the second-to-last vowel group (the first, if there's only one).
+    const groups = [...out.matchAll(/ου|αι|ει|οι|[αεηιουω]/g)];
+    if (groups.length) {
+      const g = groups[groups.length >= 2 ? groups.length - 2 : 0];
+      const at = g.index + g[0].length - 1;
+      out = out.slice(0, at) + out[at] + "́" + out.slice(at + 1);
+      if (/^[αεηιουω]/.test(out)) out = out[0] + "̓" + out.slice(1); // smooth breathing on a first vowel
+    }
+    out = out.normalize("NFC");
+    return out[0].toUpperCase() + out.slice(1);
+  }
+  const nameInGreek = () => (S.greekName && O.trim(S.greekName)) || greekName(S.userName);
+  function pickVerse() {
+    const named = !!nameInGreek();
+    const pool = VERSES.map((v, i) => i).filter((i) => (named || !VERSES[i][0].includes("{N}")) && i !== st.verseI);
+    st.verseI = pool[Math.floor(Math.random() * pool.length)];
+    st.verseOpen = false;
+  }
+  function verseLine() {
+    if (st.verseI == null || !VERSES[st.verseI]) pickVerse();
+    const [g, e, r] = VERSES[st.verseI], gn = nameInGreek(), first = String(S.userName || "").trim().split(/\s+/)[0];
+    return h("button", { class: "verse", title: "Tap for the English", "aria-expanded": st.verseOpen ? "true" : "false", onclick: () => { st.verseOpen = !st.verseOpen; render(); } },
+      h("span", { class: "gk", lang: "grc" }, g.replace("{N}", gn)),
+      st.verseOpen ? h("span", { class: "en" }, e.replace("{n}", first), h("i", null, r)) : null);
+  }
+
   function viewHome() {
     const d = O.data, n = O.currentChapter(), dir = S.tDir || "g2e";
     const hour = new Date().getHours();
-    const hello = (hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening") + (S.userName ? ", " + S.userName : "");
+    const first = String(S.userName || "").trim();
+    const hello = (hour < 12 ? "Good Morning" : hour < 17 ? "Good Afternoon" : "Good Evening") + (first ? ", " + first : "");
     const bar = (done, total) => h("div", { class: "hbar", role: "progressbar", "aria-valuemin": 0, "aria-valuemax": total, "aria-valuenow": done }, h("i", { style: `width:${total ? Math.round((done / total) * 100) : 0}%` }));
-    // Pick up where you left off.
+    const heroCard = (ic, label, title, done, total, note, btn, fn, auto) => h("div", { class: "card hero" },
+      h("div", { class: "hero-ic" }, icon(ic)),
+      h("div", { class: "hero-mid" },
+        h("div", { class: "label" }, label),
+        h("div", { class: "hero-t" }, title),
+        total != null ? bar(done, total) : null,
+        note ? h("div", { class: "hero-note" }, note) : null),
+      h("button", { class: "pill-btn", onclick: fn, "data-autofocus": auto ? "" : null }, btn + " →"));
+    // Pick up where you left off. "Start here" is only for someone with no words yet.
     const resume = continueInfo();
     const hero = resume
-      ? h("div", { class: "card hero" },
-          h("div", { class: "label", style: "margin:0;color:var(--accent)" }, "Pick up where you left off"),
-          h("div", { class: "hero-t" }, resume.title),
-          bar(resume.done, resume.total),
-          h("div", { class: "row" }, h("span", { class: "muted small" }, resume.note), h("span", { class: "spacer" }),
-            h("button", { class: "btn pri big", onclick: resume.go, "data-autofocus": "" }, "Continue →")))
+      ? heroCard(resume.icon, "Pick up where you left off", resume.title, resume.done, resume.total, resume.note, "Continue", resume.go, true)
       : !d.cards.length
-        ? h("div", { class: "card hero" },
-            h("div", { class: "label", style: "margin:0;color:var(--accent)" }, "Start here"),
-            h("div", { class: "hero-t" }, "Add your vocabulary"),
-            h("div", { class: "muted" }, "Paste your word list (Greek | English | chapter). Each chapter becomes its own group."),
-            h("div", { class: "row" }, (d.sentences || []).length ? h("button", { class: "btn link", onclick: () => go("translate") }, "Or practice translating sentences") : null,
-              h("span", { class: "spacer" }), h("button", { class: "btn pri big", onclick: () => go("add") }, "Add words →")))
-        : h("div", { class: "card hero" },
-            h("div", { class: "label", style: "margin:0;color:var(--accent)" }, "Start here"),
-            h("div", { class: "hero-t" }, n ? `Learn the Chapter ${n} words` : "Learn your words"),
-            h("div", { class: "row" }, h("span", { class: "muted small" }, "Keeps going until you know every word. Missed words come back sooner."), h("span", { class: "spacer" }),
-              h("button", { class: "btn pri big", onclick: () => startSession("study", n ? "c:" + n : "all") }, "Start →")));
+        ? heroCard("plus", "Start here", "Add your vocabulary", null, null, "Paste your word list (Greek | English | chapter). Each chapter becomes its own group.", "Add words", () => go("add"))
+        : n ? heroCard("bookOpen", "Up next", "Vocabulary · Chapter " + n, O.vocabFor(n).known, O.vocabFor(n).total, "Keeps going until you know every word. Missed words come back sooner.", "Start", () => startSession("study", "c:" + n))
+        : heroCard("bookOpen", "Up next", "Learn your words", null, null, "Keeps going until you know every word.", "Start", () => startSession("study", "all"));
     // The chapter you're on, at a glance.
     let tiles = null;
     if (n) {
       const v = O.vocabFor(n), pa = O.paradigmsFor(n), t = O.sentencesFor(n, dir);
-      const tile = (label, done, total, unit, action, fn) => h("button", { class: "card tile", onclick: fn, disabled: !total || null },
-        h("span", { class: "label", style: "margin:0" }, label),
-        h("span", { class: "tile-n" }, total ? done : "–", h("small", null, total ? ` of ${total} ${unit}` : ` no ${unit} yet`)),
+      const tile = (ic, label, done, total, unit, action, fn) => h("button", { class: "card tile", onclick: fn, disabled: !total || null },
+        h("span", { class: "tile-h" }, icon(ic), h("b", null, label)),
+        h("span", { class: "tile-s" }, total ? `${done} of ${total} ${unit}` : `No ${unit} yet`),
         bar(done, total), h("span", { class: "tile-go" }, total ? (done >= total ? "Review →" : done ? action + " →" : "Start →") : ""));
       tiles = [
-        h("div", { class: "row", style: "margin-top:6px" }, h("b", { style: "font-size:17px" }, "Chapter " + n), h("span", { class: "spacer" }),
-          h("button", { class: "btn link", onclick: () => go("chapters") }, "See all chapters →")),
+        h("div", { class: "ch-head" }, h("h2", null, "Chapter " + n), h("span", { class: "spacer" }),
+          h("button", { class: "ch-link", onclick: () => go("chapters") }, "See All Chapters →")),
         h("div", { class: "tiles" },
-          tile("Vocabulary", v.known, v.total, "words", "Keep learning", () => { st.vocabScope = "c:" + n; st.vocabKind = "study"; go("vocab"); }),
-          tile("Paradigms", pa.done, pa.total, pa.total === 1 ? "chart" : "charts", "Keep going", () => practiceParadigms(pa.ids, n)),
-          tile("Translate", t.done, t.total, "sentences", "Continue", () => startTranslate(t.ids, n, dir))),
+          tile("bookOpen", "Vocabulary", v.known, v.total, "words", "Keep learning", () => { st.vocabScope = "c:" + n; st.vocabKind = "study"; go("vocab"); }),
+          tile("layers", "Paradigms", pa.done, pa.total, pa.total === 1 ? "chart" : "charts", "Keep going", () => practiceParadigms(pa.ids, n)),
+          tile("lambda", "Translate", t.done, t.total, "sentences", "Continue", () => startTranslate(t.ids, n, dir))),
       ];
     }
+    const due = d.cards.length ? O.dueCards("all").length : 0;
+    const initials = first.split(/\s+/).filter(Boolean).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
     return {
-      title: "Home",
+      title: "", topClass: "home-top",
+      tools: h("div", { class: "top-ic" },
+        h("button", { class: "icon-btn", title: "Search your words", "aria-label": "Search your words", onclick: () => { go("vocab"); setTimeout(() => { const i = document.querySelector(".vocab-q"); if (i) { i.scrollIntoView({ block: "center" }); i.focus(); } }, 0); } }, icon("search")),
+        h("button", { class: "icon-btn", title: due ? `${due} word${due === 1 ? "" : "s"} due for Daily Review` : "Nothing due for review", "aria-label": "Daily Review", onclick: () => { st.vocabKind = "daily"; go("vocab"); } }, icon("bell"), due ? h("span", { class: "dotn" }, due > 99 ? "99+" : due) : null),
+        h("button", { class: "avatar", title: "Settings", "aria-label": "Settings", onclick: () => go("settings") }, initials || icon("homeO"))),
       body: h("div", { class: "home stack" },
-        h("div", { class: "hello" }, hello),
+        h("div", { class: "kicker" }, "Koine Greek Study"),
+        h("h1", { class: "hello" }, hello),
+        verseLine(),
         hero, tiles,
         installTip(),
         O.loadError ? h("div", { style: "color:var(--bad)" }, O.loadError) : null),
     };
+  }
+
+  // Everything you've done so far, across every chapter.
+  function viewProgress() {
+    const d = O.data, dir = S.tDir || "g2e", chs = O.allChapters();
+    const known = d.cards.filter((c) => (d.progress[c.id]?.intervalDays || 0) >= 3 || (d.mastery[c.id]?.strength || 0) >= 0.8).length;
+    const pAll = (window.PARADIGMS || []).filter((p) => O.pChapter(p.id)), pDone = pAll.filter((p) => d.pDone[p.id]).length;
+    let tDone = 0, tTotal = 0;
+    chs.forEach((n) => { const t = O.sentencesFor(n, dir); tDone += t.done; tTotal += t.total; });
+    const bar = (done, total) => h("div", { class: "hbar" }, h("i", { style: `width:${total ? Math.round((done / total) * 100) : 0}%`, class: total && done >= total ? "full" : "" }));
+    const box = (ic, label, done, total, unit) => h("div", { class: "card tile", style: "cursor:default" },
+      h("span", { class: "tile-h" }, icon(ic), h("b", null, label)),
+      h("div", { class: "prog-n" }, done, h("small", null, `of ${total} ${unit}`)), bar(done, total));
+    const due = d.cards.length ? O.dueCards("all").length : 0;
+    return { title: "Progress",
+      body: h("div", { class: "stack", style: "gap:20px" },
+        h("div", { class: "prog-grid" },
+          box("bookOpen", "Vocabulary", known, d.cards.length, "words learned"),
+          box("layers", "Paradigms", pDone, pAll.length, "charts"),
+          box("lambda", "Translate", tDone, tTotal, "sentences")),
+        h("div", { class: "card pad stack" },
+          h("div", { class: "row" }, "Words due for Daily Review today", h("span", { class: "spacer" }), h("b", null, due)),
+          h("div", { class: "row" }, "Words reviewed at least once", h("span", { class: "spacer" }), h("b", null, Object.keys(d.progress).length)),
+          h("div", { class: "row" }, "Chapters", h("span", { class: "spacer" }), h("b", null, chs.length))),
+        h("div", { class: "row" }, h("span", { class: "spacer" }), h("button", { class: "ch-link", onclick: () => go("chapters") }, "Chapter by chapter →"))) };
   }
 
   // Home's Continue button: what you last did, and where it stands now.
@@ -193,7 +333,7 @@
       if (!ids.length) return null;
       const dir = a.dir || "g2e", done = ids.filter((id) => O.data.tResults[id + "|" + dir]).length;
       const all = done >= ids.length;
-      return { title: `Translate · ${a.title}${all ? " · all done" : ` · sentence ${done + 1} of ${ids.length}`}`, done, total: ids.length,
+      return { icon: "lambda", title: `Translate · ${a.title}${all ? " · all done" : ` · sentence ${done + 1} of ${ids.length}`}`, done, total: ids.length,
         note: all ? "Finished. Continue to go through it again." : `${ids.length - done} sentence${ids.length - done === 1 ? "" : "s"} left`, go: () => startTranslate(ids, a.chapter, dir, a.title) };
     }
     if (a.type === "vocab") {
@@ -201,13 +341,13 @@
       if (!cards.length) return null;
       const known = cards.filter((c) => (O.data.progress[c.id]?.intervalDays || 0) >= 3 || (O.data.mastery[c.id]?.strength || 0) >= 0.8).length;
       const verb = { study: "Learn", daily: "Review", cram: "Cram" }[a.kind] || "Study";
-      return { title: `${verb} · ${O.scopeTitle(a.scope)}`, done: known, total: cards.length, note: `${known} of ${cards.length} words learned`, go: () => startSession(a.kind, a.scope) };
+      return { icon: "bookOpen", title: `${verb} · ${O.scopeTitle(a.scope)}`, done: known, total: cards.length, note: `${known} of ${cards.length} words learned`, go: () => startSession(a.kind, a.scope) };
     }
     if (a.type === "paradigms") {
       const ids = (a.ids || []).filter((id) => O.pById(id));
       if (!ids.length) return null;
       const done = ids.filter((id) => O.data.pDone[id]).length;
-      return { title: `Paradigms · ${a.title}`, done, total: ids.length, note: `${done} of ${ids.length} charts filled in correctly`, go: () => practiceParadigms(ids, a.chapter, a.title) };
+      return { icon: "layers", title: `Paradigms · ${a.title}`, done, total: ids.length, note: `${done} of ${ids.length} charts filled in correctly`, go: () => practiceParadigms(ids, a.chapter, a.title) };
     }
     return null;
   }
@@ -782,7 +922,7 @@
 
   function viewVocab() {
     const listBox = h("div");
-    const search = h("input", { type: "text", placeholder: "Search Greek or English", style: "width:100%", value: vocabSearch,
+    const search = h("input", { type: "text", class: "vocab-q", placeholder: "Search Greek or English", style: "width:100%", value: vocabSearch,
       oninput: () => { vocabSearch = search.value; drawList(); } });
     const drawList = () => listBox.replaceChildren(vocabList());
     drawList();
@@ -883,11 +1023,11 @@
         h("span", { class: "gk" }, c.greek), h("span", { class: "spacer" }), h("span", { class: "muted small" }, c.gloss));
       const others = fq ? all.filter((c) => sel.has(c.id) && !matches.includes(c)) : [];
       const allOn = matches.length && matches.every((c) => sel.has(c.id));
-      listBox.replaceChildren(
+      listBox.replaceChildren(...[
         h("div", { class: "sec-h" }, fq ? matches.length + " matches" : "All words", h("span", { class: "spacer" }), sel.size + " selected",
           h("button", { class: "btn link", onclick: () => { matches.forEach((c) => (allOn ? sel.delete(c.id) : sel.add(c.id))); drawList(); } }, allOn ? "Deselect these" : "Select all")),
         h("div", { class: "list", style: "max-height:45vh;overflow:auto" }, matches.map(row)),
-        others.length ? [h("div", { class: "sec-h" }, "Also selected"), h("div", { class: "list" }, others.map(row))] : null);
+        others.length ? [h("div", { class: "sec-h" }, "Also selected"), h("div", { class: "list" }, others.map(row))] : null].flat().filter(Boolean));
     };
     drawList();
     const save = () => {
@@ -1236,7 +1376,7 @@
       imp.excluded = new Set([...imp.excluded].filter((n) => found.includes(n)));
       const ready = all.filter((c) => c.chapter == null || !imp.excluded.has(c.chapter));
       const counts = {}; all.forEach((c) => { if (c.chapter != null) counts[c.chapter] = (counts[c.chapter] || 0) + 1; });
-      dyn.replaceChildren(
+      dyn.replaceChildren(...[
         found.length > 1 ? h("div", { class: "card pad" }, h("div", { class: "label", style: "margin-top:0" }, "Chapters to add"),
           h("div", { class: "chips" }, found.map((n) => h("button", { class: "chip" + (!imp.excluded.has(n) ? " on" : ""), onclick: () => { imp.excluded.has(n) ? imp.excluded.delete(n) : imp.excluded.add(n); drawDyn(); } }, "Ch. " + n, h("small", null, counts[n])))),
           h("div", { class: "row", style: "margin-top:8px" }, h("button", { class: "btn link", onclick: () => { imp.excluded = new Set(); drawDyn(); } }, "Select all"), h("button", { class: "btn link", onclick: () => { imp.excluded = new Set(found); drawDyn(); } }, "Select none"),
@@ -1247,7 +1387,7 @@
             st.msg = `Added ${n} word${n === 1 ? "" : "s"}` + (S.groupByChapter && chs && n ? ` into ${chs} chapter group${chs === 1 ? "" : "s"}` : "") + (ready.length - n ? `. Skipped ${ready.length - n} already in your list.` : ".");
             render(); } }, `+ Add ${ready.length} word${ready.length === 1 ? "" : "s"}`),
           h("button", { class: "btn", disabled: !all.length, onclick: () => { O.savePreset(O.trim(imp.deck) || "My Words", imp.text); st.msg = `Saved “${O.trim(imp.deck) || "My Words"}” to your presets.`; render(); } }, "Save this list as a preset")),
-        st.msg ? h("div", { class: "muted" }, st.msg) : null);
+        st.msg ? h("div", { class: "muted" }, st.msg) : null].filter(Boolean));
     };
     const textarea = h("textarea", { placeholder: "Chapter 1\n- λόγος, ὁ — word, message\n…or one per line: λόγος, -ου, ὁ | word | 1", oninput: (e) => { imp.text = e.target.value; drawDyn(); } });
     textarea.value = imp.text;
@@ -1293,7 +1433,13 @@
       body: h("div", { class: "stack" },
         h("div", { class: "card pad stack" }, h("b", null, "You"),
           h("label", { class: "row" }, "Your name", h("span", { class: "spacer" }),
-            h("input", { type: "text", value: S.userName || "", placeholder: "For the greeting on Home", style: "width:220px", onchange: (e) => { O.set("userName", O.trim(e.target.value).slice(0, 40)); render(); } }))),
+            h("input", { type: "text", value: S.userName || "", placeholder: "For the greeting on Home", style: "width:220px", onchange: (e) => { O.set("userName", O.trim(e.target.value).slice(0, 40)); render(); } })),
+          h("label", { class: "row" }, h("span", null, "Your name in Greek", h("span", { class: "muted small", style: "display:block" }, "Used in the Greek line on Home. Leave blank to spell it automatically.")), h("span", { class: "spacer" }),
+            h("input", { type: "text", class: "greek", lang: "grc", value: S.greekName || "", placeholder: greekName(S.userName) || "Χάρλι", style: "width:220px", onchange: (e) => { O.set("greekName", O.trim(e.target.value).slice(0, 40)); pickVerse(); render(); } }))),
+        h("div", { class: "card pad stack" }, h("b", null, "Appearance"),
+          h("label", { class: "row" }, "Theme", h("span", { class: "spacer" }),
+            h("select", { onchange: (e) => { O.set("theme", e.target.value); applyTheme(); render(); } },
+              [["system", "Match my device"], ["dark", "Dark"], ["light", "Light"]].map(([v, t]) => h("option", { value: v, selected: (S.theme || "system") === v || null }, t))))),
         h("div", { class: "card pad stack" }, h("b", null, "Daily Review"),
           h("label", { class: "row" }, "New words per day", h("span", { class: "spacer" }),
             h("input", { type: "number", min: 5, max: 100, step: 5, value: S.newPerDay, style: "width:90px", onchange: (e) => { O.set("newPerDay", Math.max(1, +e.target.value || 15)); render(); } }))),
@@ -1302,9 +1448,9 @@
           h("div", { class: "row" }, "Groups", h("span", { class: "spacer" }), h("span", { class: "muted" }, O.data.groups.length)),
           h("div", { class: "row" }, "Reviewed at least once", h("span", { class: "spacer" }), h("span", { class: "muted" }, Object.keys(O.data.progress).length))),
         h("div", { class: "card pad stack" }, h("b", null, "About"),
-          h("div", { class: "row" }, "Version", h("span", { class: "spacer" }), h("span", { class: "muted" }, "Ostraka Web 19")),
+          h("div", { class: "row" }, "Version", h("span", { class: "spacer" }), h("span", { class: "muted" }, "Ostraka Web 20")),
           h("div", { class: "muted small" }, "Your words and progress are saved in this browser on this computer."),
-          h("div", { class: "muted small" }, "Translate uses the SBL Greek New Testament (SBLGNT, Society of Biblical Literature and Logos Bible Software) with MorphGNT parsing (CC BY-SA), glosses from the Dodson Greek Lexicon (public domain), and the Montserrat font (SIL Open Font License). Practice sentences by Prof. Andrew Swygard, used with permission."),
+          h("div", { class: "muted small" }, "Translate uses the SBL Greek New Testament (SBLGNT, Society of Biblical Literature and Logos Bible Software) with MorphGNT parsing (CC BY-SA), glosses from the Dodson Greek Lexicon (public domain), and the Montserrat and EB Garamond fonts (SIL Open Font License). Practice sentences by Prof. Andrew Swygard, used with permission."),
           h("button", { class: "btn", onclick: () => { O.set("hasSeenWelcome", false); render(); } }, "Show the welcome guide again")),
         h("div", { class: "card pad stack" },
           h("button", { class: "btn red", onclick: () => { if (confirm("Reset all progress? Your words, chapters and groups stay.")) { O.resetProgress(); render(); } } }, "Reset all progress"),

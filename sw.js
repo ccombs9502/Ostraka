@@ -1,10 +1,10 @@
 // Ostraka offline support: keeps a copy of the app so it opens without internet.
 // Bump VERSION whenever the app files change so phones pick up the update.
-const VERSION = "ostraka-web-19c";
+const VERSION = "ostraka-web-20";
 const FILES = [
   "./", "index.html", "styles.css", "manifest.webmanifest",
   "js/paradigms.js", "js/logic.js", "data/practice.js", "js/tengine.js", "js/english.js", "js/translate.js", "js/app.js",
-  "data/gnt.js", "fonts/Montserrat.woff2", "fonts/Montserrat-Italic.woff2",
+  "data/gnt.js", "fonts/Montserrat.woff2", "fonts/Montserrat-Italic.woff2", "fonts/EBGaramond.woff", "fonts/EBGaramond-Italic.woff", "icons/wave-dark.jpg", "icons/wave-light.jpg",
   "icon.png", "icons/apple-touch-icon.png", "icons/icon-192.png", "icons/icon-512.png", "icons/icon-maskable-512.png",
 ];
 
