@@ -39,8 +39,10 @@
   O.checkEnglish = (answer, gloss) => {
     const a = normalizeEnglish(answer);
     if (!a) return false;
+    // Small direction words that mean the same thing here: "go into" = "go in", "come out of" = "come out".
+    const loose = (t) => t.replace(/\binto\b/g, "in").replace(/\b(onto|upon)\b/g, "on").replace(/\bout of\b/g, "out").replace(/\bunto\b/g, "to").replace(/\btowards\b/g, "toward").replace(/\bfrom out\b/g, "out");
     return englishOptions(gloss).some((o) => {
-      if (a === o) return true;
+      if (a === o || loose(a) === loose(o)) return true;
       const tol = o.length >= 8 ? 2 : o.length >= 4 ? 1 : 0;
       return tol > 0 && O.levenshtein(a, o) <= tol;
     });

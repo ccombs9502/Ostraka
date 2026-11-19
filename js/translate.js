@@ -861,12 +861,47 @@
   // Does the English fit the case? Right now: a genitive usually shows up as
   // "of …", "…'s", "from …" or a possessive like "my" or "his".
   // The meanings to grade against: the dictionary gloss, plus the meaning you gave.
+  // A preposition's meaning depends on the case it takes (παρά + gen "from",
+  // + dat "beside, with", + acc "beside, along"), so check against that case's meanings.
+  const PREP = {
+    "ανα": { A: "up, each, apiece, among, in the midst of" },
+    "αντι": { G: "instead of, in place of, for, in return for" },
+    "απο": { G: "from, away from, of, since, by" },
+    "δια": { G: "through, by, by means of, during, throughout, after", A: "because of, on account of, for the sake of, for, through" },
+    "εισ": { A: "into, to, in, for, toward, towards, among, against, unto, until, on, upon, at, so that" },
+    "εκ": { G: "out of, from, of, by, away from, out from" }, "εξ": { G: "out of, from, of, by, away from, out from" },
+    "εν": { D: "in, on, among, with, by, at, within, during, when, into, while, inside" },
+    "επι": { G: "on, upon, over, at, before, in the time of, in, near, by", D: "on, upon, at, by, because of, in, against, near, on the basis of, over, with, to, for", A: "on, upon, onto, to, against, over, toward, towards, for, at, about, across, after" },
+    "κατα": { G: "against, down, down from, throughout, by", A: "according to, throughout, along, during, about, by, in, at, for, down, toward, upon, each, every, on, like, in keeping with" },
+    "μετα": { G: "with, among, against", A: "after, behind" },
+    "παρα": { G: "from, from beside", D: "with, beside, by, near, in the presence of, before, in the sight of, among, at", A: "beside, by, along, alongside, near, at, by the side of, beyond, than, more than, contrary to, against, rather than" },
+    "περι": { G: "about, concerning, for, of, regarding, with regard to, on account of", A: "around, about, near, concerning, with regard to" },
+    "προ": { G: "before, in front of, above, ahead of" },
+    "προσ": { G: "for, for the sake of", D: "at, near, by, around", A: "to, toward, towards, with, against, unto, at, for, about, by, near, into, before" },
+    "συν": { D: "with, together with, besides, along with" },
+    "υπερ": { G: "for, on behalf of, for the sake of, about, concerning, instead of, in place of", A: "above, beyond, over, more than, than" },
+    "υπο": { G: "by, through, under", A: "under, below, beneath, about" },
+  };
+  const CASE_NAME = { G: "genitive", D: "dative", A: "accusative" };
+  T._prep = (lemma, takes, text) => { const row = PREP[O.fold(lemma).replace(/ς/g, "σ")]; return row && row[takes] ? window.OENG.checkCtx({ lemma, pos: "P-" }, "Preposition", row[takes].split(", "), text).ok : null; };
+  function prepMeanings(f, u) {
+    if (E.posName(f.pos) !== "Preposition") return null;
+    const t = unitTakes(u), L = O.fold(f.lemma).replace(/ς/g, "σ"), row = PREP[L];
+    return t && row && row[t] ? { list: row[t].split(", "), takes: t } : null;
+  }
   function gradeCtx(u, a, forms, text) {
     if (!text) return { ok: false, why: "Type how this word reads in this sentence." };
     if (!forms.length || !window.OENG) return { ok: true };
     let first = null;
     for (const f of forms) {
       const kind = E.posName(f.pos);
+      const pm = prepMeanings(f, u);
+      if (pm) {
+        const r = window.OENG.checkCtx(f, kind, pm.list, text);
+        if (r.ok) return r;
+        if (!first) first = { ok: false, why: `With the ${CASE_NAME[pm.takes]}, ${f.lemma} means ${pm.list.slice(0, 6).map((m) => "“" + m + "”").join(", ")}${pm.list.length > 6 ? "…" : ""}.` };
+        continue;
+      }
       const meanings = (E.gloss(f.lemma) || "").split(/[,;\/]/).concat(a.ok.mean && a.f.mean ? a.f.mean.split(/[,;\/]/) : []);
       const r = window.OENG.checkCtx(f, kind, meanings, text);
       if (r.ok) return r;
@@ -1457,8 +1492,8 @@
     const isCompact = (k, filled, needsClose) => !(one && k === curQ) && filled && !a.open[k] && a.ok[k] !== false && (!needsClose || a.closed[k]);
     const order = e2g ? ["lex", "form"] : ["lex", "mean", "ctx"].filter((k) => !(k === "lex" && noLex(u)) && !(k === "mean" && noMean(u)));
     const focusNext = (from) => {
-      // "In this sentence" waits for the Check button.
-      if (one) { if (from === "ctx") return; if (a.waitNext) { nextWord(); return; } checkUnit(); return; }
+      // Enter does what the Check / Next → button does.
+      if (one) { if (a.waitNext) { nextWord(); return; } checkUnit(); return; }
       const later = order.slice(order.indexOf(from) + 1).find((k) => !(a.f[k] || "").trim());
       if (later) { a.open[later] = true; render(); return; }
       checkUnit();
@@ -1552,7 +1587,7 @@
         h("button", { class: "btn", onclick: () => { a.skip = true; ss.hint = null; advance(); } }, "↷ Skip"),
         h("span", { class: "spacer" }),
         one && a.ok.ctx === false && (a.f.ctx || "").trim() ? h("button", { class: "btn link", onclick: () => { a.ctxOverride = (a.f.ctx || "").trim(); checkUnit(); } }, "✓ I was right, count it") : null,
-        h("span", { class: "hint keys" }, a.waitNext ? "Enter for the next word" : one && curQ === "ctx" ? "Press Check when you're ready" : "Enter checks this"),
+        h("span", { class: "hint keys" }, a.waitNext ? "Enter for the next word" : "Enter checks this"),
         a.waitNext ? h("button", { class: "btn pri big", onclick: nextWord }, "Next →") : h("button", { class: "btn pri big", onclick: checkUnit }, "Check")));
   }
 

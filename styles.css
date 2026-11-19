@@ -873,3 +873,9 @@ button:focus-visible, .chip:focus-visible, .how:focus-visible, .tile:focus-visib
 .t-bluetag { display: inline-block; margin: 2px auto 0; padding: 3px 12px; border-radius: 999px; font-size: 13px; font-weight: 600; color: #3d7fd1; background: rgba(61,127,209,.13); }
 @media (prefers-color-scheme: dark) { :root:not([data-theme=light]) .t-tag.blue, :root:not([data-theme=light]) .t-bluetag { color: #7fb2f0; background: rgba(127,178,240,.14); } }
 :root[data-theme=dark] .t-tag.blue, :root[data-theme=dark] .t-bluetag { color: #7fb2f0; background: rgba(127,178,240,.14); }
+/* Board matching: a right pair stays bright while the green sweep runs, then fades out. */
+.tile.done { transition: opacity .35s ease; }
+.tile.done.just-matched { opacity: 1; background: var(--card); box-shadow: 0 0 0 1px color-mix(in srgb, var(--ok) 55%, transparent); }
+/* The header (and its Hint / Settings pop-ups) always sits above the page under it. */
+.session > .s-head { position: relative; z-index: 40; }
+.t-pop { z-index: 50; }

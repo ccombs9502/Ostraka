@@ -30,7 +30,7 @@ for p in paths:
     files[p] = {"sha256": hashlib.sha256(data).hexdigest(), "size": len(data)}
 
 out = {
-    "name": f"Ostraka Web {web}",
+    "name": f"Ostraka Web {web}{patch}",
     "build": build,
     "styles": styles,
     "scripts": scripts,

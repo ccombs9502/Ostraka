@@ -838,13 +838,17 @@
 
     if (S.boardStyle !== "type") {
       bs.meanings = bs.meanings || O.shuffle(cards);
-      bs.mg = bs.mg || new Set(); bs.mm = bs.mm || new Set(); bs.missed = bs.missed || new Set(); bs.flash = bs.flash || new Set();
+      bs.mg = bs.mg || new Set(); bs.mm = bs.mm || new Set(); bs.missed = bs.missed || new Set(); bs.flash = bs.flash || new Set(); bs.sweep = bs.sweep || {};
       if (bs.mg.size === cards.length) return [styleSeg, finished("Board cleared!", `${cards.length - bs.missed.size} of ${cards.length} matched on the first try.`)];
       const tryMatch = () => {
         if (!bs.g || !bs.e) return render();
         const gc = cards.find((c) => c.id === bs.g), ec = cards.find((c) => c.id === bs.e);
         if (bs.g === bs.e || O.fold(gc.gloss) === O.fold(ec.gloss)) {
           bs.mg.add(bs.g); bs.mm.add(bs.e);
+          // The green sweep runs across both tiles of a right match.
+          const now = Date.now(), keys = ["g" + bs.g, "e" + bs.e];
+          keys.forEach((k) => (bs.sweep[k] = now));
+          setTimeout(() => { keys.forEach((k) => delete bs.sweep[k]); render(); }, 1100);
           if (!bs.missed.has(bs.g)) onResult(gc, true);
         } else {
           if (!bs.missed.has(bs.g)) { bs.missed.add(bs.g); onResult(gc, false); }
@@ -856,7 +860,10 @@
       };
       const tile = (c, gk) => {
         const id = c.id, done = gk ? bs.mg.has(id) : bs.mm.has(id), picked = gk ? bs.g === id : bs.e === id;
-        return h("button", { class: "tile" + (gk ? " gk" : "") + (done ? " done" : "") + (picked ? " picked" : "") + (bs.flash.has((gk ? "g" : "e") + id) ? " flash" : ""), disabled: done,
+        const sw = bs.sweep[(gk ? "g" : "e") + id];
+        return h("button", { class: "tile" + (gk ? " gk" : "") + (done ? " done" : "") + (picked ? " picked" : "") + (bs.flash.has((gk ? "g" : "e") + id) ? " flash" : "") + (sw ? " t-sweep just-matched" : ""), disabled: done,
+          // Re-drawing mid-sweep picks the animation up where it was, instead of restarting it.
+          style: sw ? `--sweep-delay:-${Date.now() - sw}ms` : null,
           onclick: () => { if (gk) bs.g = bs.g === id ? null : id; else bs.e = bs.e === id ? null : id; tryMatch(); } }, gk ? c.greek : c.gloss);
       };
       return [styleSeg, h("div", { class: "cols" }, h("div", null, cards.map((c) => tile(c, true))), h("div", null, bs.meanings.map((c) => tile(c, false)))),
@@ -873,12 +880,18 @@
       input.addEventListener("keydown", (e) => { if (e.key === "Enter" && !(e.metaKey || e.ctrlKey)) { e.preventDefault(); e.stopPropagation(); (inputs[i + 1] || input).focus(); } });
       if (i === 0 && !bs.results) input.setAttribute("data-autofocus", "");
       inputs.push(input);
-      return h("div", { class: "trow" + (bs.results ? (right(c) ? " ok" : " bad") : "") },
+      // Right answers get the green sweep, one row after another. Re-drawing (like "I was right")
+      // continues each sweep from where it was instead of restarting it.
+      const since = bs.results ? Date.now() - (bs.over.has(c.id) ? bs.overAt[c.id] : bs.checkedAt) : 0;
+      const sweeping = bs.results && right(c) && since < 1400 + i * 90;
+      return h("div", { class: "trow" + (bs.results ? (right(c) ? " ok" : " bad") : "") + (sweeping ? " t-sweep" : ""),
+        style: sweeping ? `--sweep-delay:${(bs.over.has(c.id) ? 0 : i * 90) - since}ms` : null },
         h("div", { class: "gk" }, c.greek),
         h("div", { style: "flex:1" }, input, bs.results ? [h("div", { class: "small", style: `color:var(--${right(c) ? "ok" : "bad"});margin-top:4px` }, (right(c) ? "✓ " : "✕ ") + c.gloss),
-          !right(c) ? h("button", { class: "btn", style: "margin-top:6px;font-size:12px;padding:4px 10px", onclick: () => { bs.over.add(c.id); render(); } }, "✓ I was right, count it") : null] : null));
+          !right(c) ? h("button", { class: "btn", style: "margin-top:6px;font-size:12px;padding:4px 10px", onclick: () => { bs.over.add(c.id); bs.overAt[c.id] = Date.now(); render(); } }, "✓ I was right, count it") : null] : null));
     });
-    const check = () => { bs.results = {}; cards.forEach((c) => { bs.results[c.id] = O.checkEnglish(bs.answers[c.id] || "", c.gloss); }); render(); };
+    bs.overAt = bs.overAt || {};
+    const check = () => { bs.results = {}; bs.checkedAt = Date.now(); cards.forEach((c) => { bs.results[c.id] = O.checkEnglish(bs.answers[c.id] || "", c.gloss); }); render(); };
     const finish = () => { if (bs.finished) return; bs.finished = true; cards.forEach((c) => onResult(c, right(c))); onNext(); };
     st.keys = (e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && !bs.results) check(); else if (e.key === "Enter" && bs.results) finish(); };
     return [styleSeg, h("div", { class: "tboard" }, rows),
@@ -1452,7 +1465,7 @@
           h("div", { class: "row" }, "Groups", h("span", { class: "spacer" }), h("span", { class: "muted" }, O.data.groups.length)),
           h("div", { class: "row" }, "Reviewed at least once", h("span", { class: "spacer" }), h("span", { class: "muted" }, Object.keys(O.data.progress).length))),
         h("div", { class: "card pad stack" }, h("b", null, "About"),
-          h("div", { class: "row" }, "Version", h("span", { class: "spacer" }), h("span", { class: "muted" }, "Ostraka Web 20")),
+          h("div", { class: "row" }, "Version", h("span", { class: "spacer" }), h("span", { class: "muted" }, "Ostraka Web 20d")),
           h("div", { class: "muted small" }, "Your words and progress are saved in this browser on this computer."),
           h("div", { class: "muted small" }, "Translate uses the SBL Greek New Testament (SBLGNT, Society of Biblical Literature and Logos Bible Software) with MorphGNT parsing (CC BY-SA), glosses from the Dodson Greek Lexicon (public domain), and the Montserrat and EB Garamond fonts (SIL Open Font License). Practice sentences by Prof. Andrew Swygard, used with permission."),
           h("button", { class: "btn", onclick: () => { O.set("hasSeenWelcome", false); render(); } }, "Show the welcome guide again")),
