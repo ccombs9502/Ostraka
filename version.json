@@ -1,6 +1,6 @@
 {
  "name": "Ostraka Web 20",
- "build": 2000,
+ "build": 2002,
  "styles": [
   "styles.css"
  ],
@@ -19,8 +19,8 @@
    "size": 2576
   },
   "styles.css": {
-   "sha256": "6ce007162d2405267648f2f5e73e0cbb9c557dea761b7f9035c1589e35363c0d",
-   "size": 65779
+   "sha256": "fa951b77fff73bfb1149199364c64ff69ece653069f167a2c87ded2c7997fef3",
+   "size": 66434
   },
   "js/paradigms.js": {
    "sha256": "734fd550ad97d53c3aa93cea15ad71793babe4cd0d9b578cb768bb53684bfff2",
@@ -35,8 +35,8 @@
    "size": 96207
   },
   "js/tengine.js": {
-   "sha256": "ec9ac510ee8f811f70e4d5b2b87a1cffac5c2d0bd8f6a544b9ba0ca85af28f4a",
-   "size": 41218
+   "sha256": "0b17945343667e2af7210add81e203cf8d7c576f3a9cafb05eadf7816656f6f4",
+   "size": 42013
   },
   "js/english.js": {
    "sha256": "d2f105682d73b03fd5238a42c6ff767ea08d9f8a46b33ba7563f0854f9e71205",
@@ -47,8 +47,8 @@
    "size": 170668
   },
   "js/app.js": {
-   "sha256": "5b0304fe974c3d7e4e5afeab3dd351f01624eca09064b05a8474da2ac5b30c8c",
-   "size": 117992
+   "sha256": "a3c48a94332bd92ebbf4b1a0fcf7ca0232b425cfdd2ba2e101d39f0a3b1c0e33",
+   "size": 118244
   },
   "data/gnt.js": {
    "sha256": "95c3a36eb3bef05c7046158bae6669e51059db3c880f41cc573e2a6d6680e598",

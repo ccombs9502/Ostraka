@@ -544,11 +544,23 @@
       if (L.endsWith("η") && g === "F") return ok("n-graphe");
       if (L.endsWith("α") && g === "F") return ok(/[ειρ]α$/.test(L) ? "n-hemera" : "n-doxa");
       if (L.endsWith("ησ") && g === "M") return ok("n-prophetes");
+      // A student's pick can have the wrong gender (Ἰωάννης as feminine). Show that
+      // gender's chart from the SAME declension, so the endings can be compared
+      // (γραφή beside Ἰωάννης), not an unrelated 3rd-declension chart.
+      const first = /(ησ|ασ|η|α)$/.test(L) && !L.endsWith("μα"), second = /(οσ|ον)$/.test(L);
+      if (first) {
+        if (g === "M") return ok("n-prophetes");
+        if (g === "F") return ok(/[ειρ]ασ?$/.test(L) ? "n-hemera" : L.endsWith("α") ? "n-doxa" : "n-graphe");
+        if (g === "N") return ok("n-ergon");
+      }
+      if (second && g !== "N") return ok("n-logos");
+      if (L.endsWith("ον") && g !== "N") return ok("n-logos");
       if (L.endsWith("μα")) return ok("n-onoma");
       if (L.endsWith("ευσ")) return ok("n-basileus");
       if (L.endsWith("ηρ")) return ok("n-pater");
       if (L.endsWith("οσ") && g === "N") return ok("n-genos");
-      if (L.endsWith("ισ")) return ok(L.endsWith("σισ") ? "n-polis" : "n-elpis");
+      if (L === "χαρισ") return ok("n-charis");
+      if (L.endsWith("ισ")) return ok(L.endsWith("σισ") || L === "πολισ" ? "n-polis" : "n-elpis");
       return ok("n-sarx");
     }
     if (f.pos === "A-") return ok({ πασ: "a-pas", μεγασ: "a-megas", πολυσ: "a-polys" }[L] || "a-agathos");

@@ -129,7 +129,11 @@
       if (from != null && from !== to && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
         ind.style.transition = "none"; ind.style.transform = `translateY(${from}px)`; ind.offsetHeight;
         ind.style.transition = ""; ind.style.transform = `translateY(${to}px)`;
-      } else ind.style.transform = `translateY(${to}px)`;
+      } else {
+        // Same page (or reduced motion): put it in place with no animation, so
+        // re-drawing the page (picking a word, typing) never makes it slide.
+        ind.style.transition = "none"; ind.style.transform = `translateY(${to}px)`; ind.offsetHeight; ind.style.transition = "";
+      }
       ind.classList.add("show"); render.indTop = to;
     }
     // Header tabs that don't fit: keep the chosen one in view and fade the edge.

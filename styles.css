@@ -439,7 +439,16 @@ canvas.draw { width: 100%; aspect-ratio: 1.6; background: var(--card); border-ra
 #t-print { display: none; }
 @media print {
   @page { margin: 14mm; }
-  body.t-printing { background: #fff !important; }
+  /* Print on plain white paper even when the app is in Dark mode, with room on every side. */
+  :root, :root[data-theme=dark] { color-scheme: light !important; }
+  html:has(body.t-printing) { background: #fff !important; }
+  body.t-printing { background: #fff !important; color: #222 !important; }
+  body.t-printing #t-print { box-sizing: border-box; width: 100%; max-width: 100%; padding: 0 4mm; overflow: hidden; }
+  body.t-printing .ws { width: 100%; max-width: 100%; }
+  body.t-printing .ws-head { gap: 16px; flex-wrap: wrap; }
+  body.t-printing .ws-head > * { min-width: 0; }
+  body.t-printing .ws-name { text-align: right; overflow-wrap: anywhere; }
+  body.t-printing .ws-words { max-width: 100%; }
   body.t-printing #app, body.t-printing .overlay { display: none !important; }
   body.t-printing #t-print { display: block; }
   .ws-sent { border-bottom-color: #ccc; }
