@@ -879,3 +879,7 @@ button:focus-visible, .chip:focus-visible, .how:focus-visible, .tile:focus-visib
 /* The header (and its Hint / Settings pop-ups) always sits above the page under it. */
 .session > .s-head { position: relative; z-index: 40; }
 .t-pop { z-index: 50; }
+/* Sync code */
+.sync-code { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 26px; letter-spacing: .08em; padding: 14px 18px; border-radius: 12px; background: var(--field); border: 1px solid var(--line); user-select: all; }
+.sync-input { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 20px; letter-spacing: .06em; text-transform: uppercase; }
+.serif { font-family: var(--serif); }

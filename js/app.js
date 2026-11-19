@@ -303,6 +303,57 @@
     };
   }
 
+  // ---------- Sync across devices (js/sync.js) ----------
+  if (O.sync) O.sync.listeners.push(() => { if (st.section === "settings" && !document.querySelector(".overlay")) render(); });
+  const ago = (t) => { const m = Math.round((Date.now() - t) / 60000); return !t ? "not yet" : m < 1 ? "just now" : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} hr ago` : new Date(t).toLocaleDateString(); };
+  function syncCard() {
+    const Y = O.sync;
+    if (!Y) return null;
+    if (!Y.on()) return h("div", { class: "card pad stack" }, h("b", null, "Sync across devices"),
+      h("div", { class: "muted small" }, "Keep the same words, charts and translations on your phone, laptop and desktop. One device makes a code; you type it on the others. No account or password."),
+      h("div", { class: "row wrap", style: "gap:10px" },
+        h("button", { class: "btn pri", onclick: async (e) => { e.target.disabled = true; e.target.textContent = "Turning on…"; try { const c = await Y.start(); codeSheet(c, true); } catch (err) { alert("Sync couldn't start: " + err.message); render(); } } }, "Turn on sync"),
+        h("button", { class: "btn", onclick: joinSheet }, "I have a code")));
+    const status = { syncing: "Syncing…", offline: "Offline. It will sync when you're back online.", error: "Couldn't sync: " + (Y.error || "unknown problem") + ". It will try again." }[Y.status] || "Synced " + ago(Y.lastSync);
+    return h("div", { class: "card pad stack" }, h("b", null, "Sync across devices"),
+      h("div", { class: "row" }, h("span", null, "Your sync code"), h("span", { class: "spacer" }),
+        h("button", { class: "btn link", onclick: () => codeSheet(Y.code(), false) }, "Show code")),
+      h("div", { class: "row" }, h("span", { class: "muted small", style: Y.status === "error" ? "color:var(--bad)" : "" }, status), h("span", { class: "spacer" }),
+        h("button", { class: "btn", disabled: Y.status === "syncing" || null, onclick: () => Y.syncNow() }, "Sync now")),
+      h("button", { class: "btn link", style: "align-self:flex-start;color:var(--bad)", onclick: () => { if (confirm("Stop syncing on this device? Your progress stays here, and the other devices keep syncing.")) { Y.stop(); render(); } } }, "Stop syncing on this device"));
+  }
+  function codeSheet(code, fresh) {
+    const sheet = (h("div", { class: sheetClass(), style: "width:min(480px,100%)" },
+      h("div", { class: "body stack center", style: "gap:14px" },
+        h("div", { class: "serif", style: "font-size:28px;font-weight:600" }, fresh ? "Sync is on" : "Your sync code"),
+        h("div", { class: "muted" }, "On your other devices, open Settings → Sync across devices → I have a code, and type:"),
+        h("div", { class: "sync-code", "aria-label": "Sync code " + code.split("").join(" ") }, code),
+        h("div", { class: "row", style: "gap:10px;justify-content:center" },
+          h("button", { class: "btn", onclick: (e) => { try { navigator.clipboard.writeText(code); e.target.textContent = "Copied ✓"; } catch (err) {} } }, "Copy code"),
+          h("button", { class: "btn pri", onclick: () => { closeModal(); render(); } }, "Done")),
+        h("div", { class: "muted small" }, "Anyone with this code can see and change your progress, so keep it to yourself. You can find it again here in Settings."))));
+    openModal(() => sheet);
+  }
+  function joinSheet() {
+    let val = "";
+    const msg = h("div", { class: "muted small", role: "status" });
+    const go = async (btn) => {
+      btn.disabled = true; btn.textContent = "Connecting…"; msg.textContent = ""; msg.style.color = "";
+      try { await O.sync.join(val); closeModal(); render(); codeSheet(O.sync.code(), false); }
+      catch (err) { msg.textContent = err.message; msg.style.color = "var(--bad)"; btn.disabled = false; btn.textContent = "Sync this device"; }
+    };
+    const btn = h("button", { class: "btn pri", onclick: (e) => go(e.target) }, "Sync this device");
+    const sheet = (h("div", { class: sheetClass(), style: "width:min(480px,100%)" },
+      h("div", { class: "body stack", style: "gap:12px" },
+        h("div", { class: "serif", style: "font-size:26px;font-weight:600" }, "I have a code"),
+        h("div", { class: "muted" }, "Type the code from your other device. Your progress here and there will be combined, nothing is lost."),
+        h("input", { type: "text", class: "sync-input", placeholder: "OSTR-XXXX-XXXX-XXXX", autocomplete: "off", autocapitalize: "characters", spellcheck: "false", "data-autofocus": "", "aria-label": "Sync code",
+          oninput: (e) => { val = e.target.value; }, onkeydown: (e) => { if (e.key === "Enter") go(btn); } }),
+        msg,
+        h("div", { class: "row", style: "gap:10px" }, h("span", { class: "spacer" }), h("button", { class: "btn", onclick: closeModal }, "Cancel"), btn))));
+    openModal(() => sheet);
+  }
+
   // Everything you've done so far, across every chapter.
   function viewProgress() {
     const d = O.data, dir = S.tDir || "g2e", chs = O.allChapters();
@@ -1453,6 +1504,7 @@
             h("input", { type: "text", value: S.userName || "", placeholder: "For the greeting on Home", style: "width:220px", onchange: (e) => { O.set("userName", O.trim(e.target.value).slice(0, 40)); render(); } })),
           h("label", { class: "row" }, h("span", null, "Your name in Greek", h("span", { class: "muted small", style: "display:block" }, "Used in the Greek line on Home. Leave blank to spell it automatically.")), h("span", { class: "spacer" }),
             h("input", { type: "text", class: "greek", lang: "grc", value: S.greekName || "", placeholder: greekName(S.userName) || "Χάρλι", style: "width:220px", onchange: (e) => { O.set("greekName", O.trim(e.target.value).slice(0, 40)); pickVerse(); render(); } }))),
+        syncCard(),
         h("div", { class: "card pad stack" }, h("b", null, "Appearance"),
           h("label", { class: "row" }, "Theme", h("span", { class: "spacer" }),
             h("select", { onchange: (e) => { O.set("theme", e.target.value); applyTheme(); render(); } },
@@ -1465,7 +1517,7 @@
           h("div", { class: "row" }, "Groups", h("span", { class: "spacer" }), h("span", { class: "muted" }, O.data.groups.length)),
           h("div", { class: "row" }, "Reviewed at least once", h("span", { class: "spacer" }), h("span", { class: "muted" }, Object.keys(O.data.progress).length))),
         h("div", { class: "card pad stack" }, h("b", null, "About"),
-          h("div", { class: "row" }, "Version", h("span", { class: "spacer" }), h("span", { class: "muted" }, "Ostraka Web 20d")),
+          h("div", { class: "row" }, "Version", h("span", { class: "spacer" }), h("span", { class: "muted" }, "Ostraka Web 20e")),
           h("div", { class: "muted small" }, "Your words and progress are saved in this browser on this computer."),
           h("div", { class: "muted small" }, "Translate uses the SBL Greek New Testament (SBLGNT, Society of Biblical Literature and Logos Bible Software) with MorphGNT parsing (CC BY-SA), glosses from the Dodson Greek Lexicon (public domain), and the Montserrat and EB Garamond fonts (SIL Open Font License). Practice sentences by Prof. Andrew Swygard, used with permission."),
           h("button", { class: "btn", onclick: () => { O.set("hasSeenWelcome", false); render(); } }, "Show the welcome guide again")),
