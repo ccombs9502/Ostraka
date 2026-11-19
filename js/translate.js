@@ -61,7 +61,9 @@
   // ---------- Sentence helpers ----------
   const byId = (id) => O.data.sentences.find((s) => s.id === id) || (O.data.wordItems || []).find((s) => s.id === id);
   const lastResult = (id, dir = "g2e") => O.data.tResults[id + "|" + dir] || null;
-  const usedHelp = (r) => r && (r.hints > 0 || r.charts > 0 || r.structure);
+  // Hints and charts count as help (red). Showing the structure doesn't: it stays green with a blue "Structure" note.
+  const usedHelp = (r) => r && (r.hints > 0 || r.charts > 0);
+  const structTag = (r) => (r && r.structure ? h("span", { class: "t-tag blue", title: "You looked at the sentence structure" }, "Structure") : null);
   const sentenceGreek = (s) => E.sentenceText(s, false);
   T.scopeIds = (key) => {
     const d = O.data;
@@ -174,7 +176,7 @@
         h("summary", null, h("b", null, "Options")),
         h("div", { class: "stack", style: "gap:8px;margin-top:10px" },
           toggle(s.tLinkArticles, "Link articles automatically", (v) => { O.set("tLinkArticles", v); render(); }, "Good for beginners: each article comes joined to its noun."),
-          toggle(s.tShowStructure, "Show structure", (v) => { O.set("tShowStructure", v); render(); }, "Starts the skeleton already filled in. Counts as help."),
+          toggle(s.tShowStructure, "Show structure", (v) => { O.set("tShowStructure", v); render(); }, "Starts the skeleton already filled in. Marked with a blue \"Structure\" note."),
           toggle(s.tSkelAdvanced, "Advanced skeleton", (v) => { O.set("tSkelAdvanced", v); render(); }, "Build an indented outline and name each phrase (verb, subject, object…) instead of just putting the words in order."),
           h("div", { class: "row wrap" }, h("span", null, "Labels"), seg([["letters", "PAI1P"], ["short", "Short"], ["full", "Full words"]], labelMode(), (v) => { O.set("tLabels", v); render(); }),
             h("span", { style: "margin-left:12px" }, "Notes"), seg([["folded", "Folded"], ["full", "Full"]], s.tNotesFull ? "full" : "folded", (v) => { O.set("tNotesFull", v === "full"); render(); })))),
@@ -219,10 +221,9 @@
       const parts = [];
       if (r.hints) parts.push(r.hints + (r.hints === 1 ? " hint" : " hints"));
       if (r.charts) parts.push("Chart");
-      if (r.structure) parts.push("Structure");
-      return h("span", { class: "t-tag red" }, parts.join(" · "));
+      return [h("span", { class: "t-tag red" }, parts.join(" · ")), structTag(r)];
     }
-    return r.retriedClean ? h("span", { class: "t-tag ok" }, "Retried clean ✓") : null;
+    return [r.retriedClean ? h("span", { class: "t-tag ok" }, "Retried clean ✓") : null, structTag(r)];
   }
   const fmtDate = (t) => { if (!t) return ""; const d = new Date(t), now = new Date(); const days = Math.floor((now.setHours(0, 0, 0, 0) - new Date(t).setHours(0, 0, 0, 0)) / 864e5); return days === 0 ? "Today" : days === 1 ? "Yesterday" : d.toLocaleDateString(undefined, { month: "short", day: "numeric" }); };
 
@@ -304,7 +305,7 @@
     const status = (dir) => {
       if (!one) return null;
       const r = lastResult(ids[0], dir);
-      return h("span", { class: "muted small" }, !r ? "Not done yet" : usedHelp(r) ? h("span", null, h("span", { class: "t-dot red" }), " Done with help") : "✓ Done");
+      return h("span", { class: "muted small" }, !r ? "Not done yet" : usedHelp(r) ? h("span", null, h("span", { class: "t-dot red" }), " Done with help") : "✓ Done", r && r.structure ? [" ", structTag(r)] : null);
     };
     const pick = (dir) => { O.set("tDir", dir); closeModal(); T.start(ids, dir, title); };
     const choice = (dir, top, sub) => h("button", { class: "t-dirpick" + (S().tDir === dir ? " last" : ""), onclick: () => pick(dir) },
@@ -2098,7 +2099,7 @@
   function completeSheet() {
     const ss = T.session, r = ss.result, s = ss.s, e2g = ss.dir === "e2g";
     const help = usedHelp(r);
-    const tag = help ? [r.hints ? `${r.hints} hint${r.hints === 1 ? "" : "s"}` : "", r.charts ? "chart" : "", r.structure ? "structure" : ""].filter(Boolean).join(" & ") : "";
+    const tag = help ? [r.hints ? `${r.hints} hint${r.hints === 1 ? "" : "s"}` : "", r.charts ? "chart" : ""].filter(Boolean).join(" & ") : "";
     const pal = ["#e8b665", "#c9a050", "#f3d9a0", "#a8743a"];
     const shards = Array.from({ length: 22 }, (_, i) => { const a = (i / 22) * Math.PI * 2 + (i % 3) * 0.2, rr = 100 + ((i * 37) % 70), x = 260 + Math.cos(a) * rr * 1.35, y = 60 + Math.sin(a) * rr * 0.32, sz = 6 + ((i * 7) % 9); return `<polygon class="t-shard" style="--d:${(i % 7) * 40}ms;--x:${(260 - x) * 0.6}px;--y:${(60 - y) * 0.6}px" points="0,${-sz} ${sz * 0.8},${sz * 0.4} ${-sz * 0.6},${sz * 0.7}" fill="${pal[i % 4]}" opacity="${0.55 + (i % 4) * 0.12}" transform="translate(${x} ${y}) rotate(${(i * 53) % 360})"/>`; }).join("");
     const svgShards = h("div", { class: "t-shards", html: `<svg width="520" height="210" viewBox="0 0 520 210">${shards}</svg>` });
@@ -2111,6 +2112,7 @@
     return h("div", { class: sheetClass() + " t-done", style: "width:min(560px,100%)" },
       h("div", { class: "body center stack", style: "position:relative;overflow:hidden" },
         help ? h("div", { class: "t-redtag" }, h("span", { class: "t-dot red" }), "Translated with " + tag) : null,
+        r.structure ? h("div", { class: "t-bluetag" }, "Structure") : null,
         svgShards,
         h("div", { class: "t-medal" }, "✓"),
         h("div", { style: "font-size:25px;font-weight:700;position:relative" }, set ? "Words parsed!" : "Sentence translated!"),

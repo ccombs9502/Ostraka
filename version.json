@@ -1,6 +1,6 @@
 {
  "name": "Ostraka Web 20",
- "build": 2002,
+ "build": 2003,
  "styles": [
   "styles.css"
  ],
@@ -19,8 +19,8 @@
    "size": 2576
   },
   "styles.css": {
-   "sha256": "fa951b77fff73bfb1149199364c64ff69ece653069f167a2c87ded2c7997fef3",
-   "size": 66434
+   "sha256": "33ecda7daa8bdc18d0ae2f628765bb2961d212b3bc5aa8ca6b3c68c808bd6eb5",
+   "size": 67051
   },
   "js/paradigms.js": {
    "sha256": "734fd550ad97d53c3aa93cea15ad71793babe4cd0d9b578cb768bb53684bfff2",
@@ -43,8 +43,8 @@
    "size": 27301
   },
   "js/translate.js": {
-   "sha256": "afe05e99d19f172f680d3902f7f7d5f19215796560b438b313322aea3cc97ab8",
-   "size": 170668
+   "sha256": "8ee28018887c13b92b83550367b1ae05e849854e9ab677327790eb5c1cd31d6a",
+   "size": 171021
   },
   "js/app.js": {
    "sha256": "a3c48a94332bd92ebbf4b1a0fcf7ca0232b425cfdd2ba2e101d39f0a3b1c0e33",

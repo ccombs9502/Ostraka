@@ -868,3 +868,8 @@ button:focus-visible, .chip:focus-visible, .how:focus-visible, .tile:focus-visib
 @media (prefers-color-scheme: dark) { :root:not([data-theme=light]) { --session-veil: linear-gradient(rgba(15,14,12,.86), rgba(15,14,12,.72)); } }
 :root[data-theme=dark] { --session-veil: linear-gradient(rgba(15,14,12,.86), rgba(15,14,12,.72)); }
 .session { background: var(--session-veil), var(--wave) center bottom / cover no-repeat, var(--bg); }
+/* "Structure" used: still a green check, with a blue note. */
+.t-tag.blue { color: #3d7fd1; background: rgba(61,127,209,.13); }
+.t-bluetag { display: inline-block; margin: 2px auto 0; padding: 3px 12px; border-radius: 999px; font-size: 13px; font-weight: 600; color: #3d7fd1; background: rgba(61,127,209,.13); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme=light]) .t-tag.blue, :root:not([data-theme=light]) .t-bluetag { color: #7fb2f0; background: rgba(127,178,240,.14); } }
+:root[data-theme=dark] .t-tag.blue, :root[data-theme=dark] .t-bluetag { color: #7fb2f0; background: rgba(127,178,240,.14); }
